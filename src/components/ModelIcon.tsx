@@ -1,7 +1,5 @@
 import React from 'react';
-import { ModelIcon as LobeModelIcon } from '@lobehub/icons';
-// @ts-ignore
-import siliconFlowImg from '../assets/siliconflow.png';
+import { ModelIcon as LobeModelIcon, SiliconCloud } from '@lobehub/icons';
 // @ts-ignore
 import xiaomiLogoImg from '../assets/xiaomi.svg';
 
@@ -33,7 +31,6 @@ const isXiaomi = (name: string): boolean => {
 };
 
 export const ModelIcon: React.FC<ModelIconProps> = ({ modelName, className = "w-4 h-4", size = 16 }) => {
-  // Standardize the model name (trimmed, lowercased) expected by @lobehub/icons
   const modelId = (modelName || '').trim().toLowerCase();
 
   if (isXiaomi(modelName)) {
@@ -50,20 +47,18 @@ export const ModelIcon: React.FC<ModelIconProps> = ({ modelName, className = "w-
 
   if (isSiliconFlow(modelName)) {
     return (
-      <img
-        src={siliconFlowImg}
-        alt="SiliconFlow"
-        className={`${className} object-contain inline-block`}
+      <SiliconCloud.Color
+        size={size}
+        className={className}
         style={{ width: size, height: size }}
-        referrerPolicy="no-referrer"
       />
     );
   }
 
   return (
-    <LobeModelIcon 
-      model={modelId} 
-      size={size} 
+    <LobeModelIcon
+      model={modelId}
+      size={size}
       className={className}
       type="color"
     />
