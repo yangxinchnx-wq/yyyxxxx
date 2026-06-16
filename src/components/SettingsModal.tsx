@@ -7,6 +7,7 @@ import {
   Mic, Wrench, Film
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ModelIcon } from './ModelIcon';
 
 const PROVIDER_MODEL_REGISTRY: Record<string, { id: string; name: string }[]> = {
   xiaomi: [
@@ -43,11 +44,6 @@ const PROVIDER_MODEL_REGISTRY: Record<string, { id: string; name: string }[]> = 
   moonshot: [
     { id: 'moonshot-v1-8k', name: 'moonshot-v1-8k' },
     { id: 'moonshot-v1-32k', name: 'moonshot-v1-32k' }
-  ],
-  groq: [
-    { id: 'llama3-70b-8192', name: 'llama3-70b-8192' },
-    { id: 'mixtral-8x7b-32768', name: 'mixtral-8x7b-32768' },
-    { id: 'gemma2-9b-it', name: 'gemma2-9b-it' }
   ],
   custom: []
 };
@@ -222,19 +218,6 @@ export default function SettingsModal({
         customModels: [],
         status: 'idle' as const,
         color: '#f43f5e'
-      },
-      {
-        id: 'groq',
-        name: 'Groq Cloud',
-        desc: 'LPU 芯片驱动，带来飞一般的词元生成速度',
-        enabled: false,
-        apiKey: '',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        defaultUrl: 'https://api.groq.com/openai/v1',
-        models: [],
-        customModels: [],
-        status: 'idle' as const,
-        color: '#ec4899'
       },
       {
         id: 'custom',
@@ -1067,14 +1050,8 @@ export default function SettingsModal({
                                     : 'border-transparent text-[var(--color-on-surface)]/35 hover:text-[var(--color-on-surface)]/50 opacity-40'
                               }`}
                             >
-                              <div className="flex items-center gap-2 truncate">
-                                <span 
-                                  className="w-2 h-2 rounded-full shrink-0 transition-all duration-300" 
-                                  style={{ 
-                                    backgroundColor: p.enabled ? p.color : '#4b5563',
-                                    boxShadow: p.enabled ? `0 0 8px ${p.color}` : 'none'
-                                  }}
-                                />
+                              <div className="flex items-center gap-2.5 truncate">
+                                <ModelIcon modelName={p.id} size={15} className="shrink-0" />
                                 <span className="truncate">{p.name}</span>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
@@ -1315,7 +1292,8 @@ export default function SettingsModal({
 
                                           return (
                                             <div key={m.id} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-[var(--color-bg)]/80 border border-[var(--color-outline)]/10 text-[11px]">
-                                              <div className="flex flex-col text-left max-w-[65%] truncate">
+                                              <div className="flex items-center gap-2 text-left max-w-[65%] truncate">
+                                                <ModelIcon modelName={m.id} size={15} className="shrink-0 animate-pulse" />
                                                 <span className="font-mono text-on-surface font-extrabold truncate" title={m.id}>{m.id}</span>
                                               </div>
 
@@ -1396,6 +1374,7 @@ export default function SettingsModal({
                                         }`}
                                       >
                                         <div className="flex items-center gap-2 truncate text-left max-w-[60%]">
+                                          <ModelIcon modelName={model.id} size={13} className="shrink-0" />
                                           <span className="font-mono text-[11.5px] truncate text-on-surface font-extrabold" title={model.id}>{model.id}</span>
                                         </div>
                                         
@@ -1440,8 +1419,8 @@ export default function SettingsModal({
                                         whileHover={{ y: -1 }}
                                         className="flex items-center justify-between p-2.5 rounded-xl border text-xs bg-[var(--color-primary)]/10 border-[var(--color-primary)]/30 text-[var(--color-on-surface)] shadow-inner"
                                       >
-                                        <div className="flex items-center gap-2.5 truncate font-mono text-[11.5px] text-left max-w-[55%]">
-                                          <span className="w-1.5 h-1.5 bg-[var(--color-primary)] rounded-full shrink-0 animate-pulse" />
+                                        <div className="flex items-center gap-2 truncate font-mono text-[11.5px] text-left max-w-[55%]">
+                                          <ModelIcon modelName={cm} size={13} className="shrink-0" />
                                           <span className="truncate text-on-surface font-bold" title={cm}>{cm}</span>
                                         </div>
                                         

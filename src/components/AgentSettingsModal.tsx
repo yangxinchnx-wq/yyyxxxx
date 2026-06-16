@@ -576,7 +576,7 @@ export default function AgentSettingsModal({ chatId, chatTitle, onClose }: Agent
   return (
     <div className="fixed inset-0 pointer-events-none z-[9999] text-on-surface font-sans select-none overflow-hidden animate-fadeIn">
       {/* Inject a non-invasive custom CSS tag to guarantee absolute zero scrollbars inside are visible and standard cursors override any hands */}
-      <style jsx="true">{`
+      <style>{`
         .no-scrollbar-now::-webkit-scrollbar,
         .no-scrollbar-now *::-webkit-scrollbar,
         #root::-webkit-scrollbar {

@@ -36,7 +36,6 @@ const PRESET_COLORS = [
   '#f97316', // Neon Orange
   '#ff79c6', // Pink Sweet
   '#88c0d0', // Frosted Ice
-  '#ef4444', // Crimson Red
   '#14b8a6', // Soft Teal
   '#eab308', // Amber Yellow
   '#ec4899', // Hot Pink

@@ -3,6 +3,7 @@ import { Layers, ChevronDown, Plus, Minus, X, Laptop, Folder, FileCode, ChevronR
 import { motion, AnimatePresence } from 'motion/react';
 import { SecondaryModel } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { ModelIcon } from './ModelIcon';
 
 interface ModelStatus {
   state: 'online' | 'warning' | 'offline';
@@ -190,6 +191,7 @@ const SecondaryModelSelector = memo(({
                             
                             {/* Stylized native select dropdown without status dot */}
                             <div className="relative flex items-center gap-1.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-bright)] border border-[var(--color-outline)]/30 rounded px-2 py-[3px] cursor-pointer outline-none transition-all">
+                              <ModelIcon modelName={sm.name} size={13} className="shrink-0" />
                               <select
                                 value={sm.name}
                                 onChange={(e) => {
@@ -302,9 +304,10 @@ const SecondaryModelSelector = memo(({
                           onClick={() => {
                             addSecModel(m);
                           }}
-                          className="text-left px-2.5 py-1.5 bg-[var(--color-surface-bright)]/40 hover:bg-primary/10 border border-[var(--color-outline)]/20 hover:border-primary/30 text-[10px] text-[var(--color-on-surface)]/80 hover:text-primary transition-all duration-200 rounded-lg cursor-pointer truncate font-semibold shadow-sm flex items-center"
+                          className="text-left px-2.5 py-1.5 bg-[var(--color-surface-bright)]/40 hover:bg-primary/10 border border-[var(--color-outline)]/20 hover:border-primary/30 text-[10px] text-[var(--color-on-surface)]/80 hover:text-primary transition-all duration-200 rounded-lg cursor-pointer truncate font-semibold shadow-sm flex items-center gap-1.5"
                           title={`追加 ${m}`}
                         >
+                          <ModelIcon modelName={m} size={11} className="shrink-0" />
                           <span className="truncate">+ {m}</span>
                         </button>
                       );
@@ -663,8 +666,9 @@ export default function Header({
           <div className={`relative font-sans ${showModelMenu ? 'z-50' : ''}`}>
             <button
               onClick={() => setShowModelMenu(!showModelMenu)}
-              className="flex items-center gap-1.5 bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface)]/90 border border-[var(--color-outline)]/30 hover:border-[var(--color-outline)]/60 px-3.5 h-[30px] rounded-full text-xs text-[var(--color-on-surface)] active:scale-95 transition-all cursor-pointer font-bold select-none overflow-hidden"
+              className="flex items-center gap-1.5 bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface)]/90 border border-[var(--color-outline)]/30 hover:border-[var(--color-outline)]/60 px-3 h-[30px] rounded-full text-xs text-[var(--color-on-surface)] active:scale-95 transition-all cursor-pointer font-bold select-none overflow-visible"
             >
+              <ModelIcon modelName={mainModel} size={14} className="shrink-0" />
               <div className="h-4 overflow-hidden relative flex items-center justify-center min-w-[84px]">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.span
@@ -698,41 +702,31 @@ export default function Header({
                     initial={{ opacity: 0, y: -6, scale: 0.96 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute left-0 mt-3.5 w-48 bg-[var(--color-surface)] border border-[var(--color-outline)]/35 rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.15)] z-50 p-1 flex flex-col gap-0.5"
+                    transition={{ duration: 0.12, ease: "easeOut" }}
+                    className="absolute left-0 mt-3.5 w-52 bg-[var(--color-surface)] border border-[var(--color-outline)]/35 rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.15)] z-50 p-1 flex flex-col gap-0.5"
                   >
                     {availableModels.map((m) => {
                       const isSelected = mainModel === m;
                       return (
                         <button
                           key={m}
-                          onMouseEnter={() => setHoveredMenuItem(m)}
-                          onMouseLeave={() => setHoveredMenuItem(null)}
                           onClick={() => {
                             setMainModel(m);
                             setShowModelMenu(false);
-                            setHoveredMenuItem(null);
                           }}
-                          className={`relative w-full text-left px-3.5 py-2 rounded-lg transition-colors text-xs font-semibold flex items-center justify-between select-none cursor-pointer ${
-                            isSelected ? '' : 'text-[var(--color-on-surface)]/80 hover:text-[var(--color-on-surface)]'
+                          className={`relative w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between select-none cursor-pointer transition-all duration-150 ease-out hover:bg-primary/10 ${
+                            isSelected ? 'text-primary font-bold' : 'text-[var(--color-on-surface)]/80 hover:text-[var(--color-on-surface)]'
                           }`}
-                          style={isSelected ? { color: 'var(--color-primary)' } : undefined}
                         >
-                          {hoveredMenuItem === m && (
-                            <motion.div
-                              layoutId="header-dropdown-hover"
-                              className="absolute inset-0 rounded-lg"
-                              style={{ backgroundColor: 'var(--color-primary)', opacity: 0.1 }}
-                              transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                            />
-                          )}
-                          <span className="relative z-10">{m}</span>
+                          <span className="relative z-10 flex items-center gap-2">
+                            <ModelIcon modelName={m} size={14} className="shrink-0" />
+                            <span>{m}</span>
+                          </span>
                           {isSelected && (
                             <motion.span 
                               layoutId="active-model-indicator"
-                              className="relative z-10 w-1.5 h-1.5 rounded-full"
-                              style={{ backgroundColor: 'var(--color-primary)' }}
-                              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                              className="relative z-10 w-1.5 h-1.5 rounded-full bg-primary"
+                              transition={{ type: "spring", stiffness: 400, damping: 28 }}
                             />
                           )}
                         </button>

@@ -950,7 +950,7 @@ export default function MobileGymStatusMonitor({ selectedChatId }: MobileGymStat
               </span>
             </div>
 
-            <div className="flex items-center gap-2.5 relative z-[60]">
+            <div className="flex items-center gap-2.5 relative z-[60] -translate-x-1.5">
               <span 
                 onMouseDown={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}

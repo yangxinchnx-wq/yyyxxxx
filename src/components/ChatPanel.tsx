@@ -4,41 +4,75 @@ import { motion, AnimatePresence } from 'motion/react';
 import TerminalPanel from './TerminalPanel';
 
 import { AndroidIcon, WindowsIcon, HarmonyOSIcon, DefaultChatIcon } from './HistoryAndEditorPanel';
+import { ModelIcon } from './ModelIcon';
 
 const NormalIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={`${className} text-emerald-400 group-hover:text-emerald-300 transition-colors`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="currentColor" fillOpacity="0.15" />
-    <path d="m9 12 2 2 4-4" strokeWidth="2.5" />
+  <svg className={`${className} text-emerald-400 group-hover:text-emerald-300 transition-all duration-300 filter drop-shadow-[0_0_4px_rgba(16,185,129,0.35)]`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {/* Sleek multi-layered security grid shield */}
+    <path d="M12 2s-8 3-8 8v4c0 5 8 8 8 8s8-3 8-8v-4c0-5-8-8-8-8z" stroke="currentColor" strokeWidth="1.8" fill="currentColor" fillOpacity="0.08" />
+    <path d="M12 5.5s-5 2-5 5v3c0 3.5 5 5.5 5 5.5s5-2 5-5.5v-3c0-3-5-5-5-5z" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2" strokeOpacity="0.75" />
+    <path d="m9 12 2 2 4-4.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const PerformanceIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={`${className} text-blue-400 group-hover:text-blue-300 transition-colors`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 12c0-4.4-3.6-8-8-8s-8 3.6-8 8" />
-    <path d="M22 12h-2M4 12H2M12 2V4" />
-    <path d="m19 19-1.5-1.5M6.5 6.5 5 5" />
-    <path d="M12 12l6-3" strokeWidth="2.5" stroke="#3b82f6" />
-    <circle cx="12" cy="12" r="2.5" fill="#3b82f6" />
+  <svg className={`${className} text-purple-400 group-hover:text-purple-300 transition-all duration-300 filter drop-shadow-[0_0_4px_rgba(168,85,247,0.35)]`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {/* Semicircular Dashboard dial Arc */}
+    <path d="M4 17.5A8 8 0 1 1 20 17.5" stroke="currentColor" strokeWidth="2" strokeOpacity="0.30" />
+    <path d="M6.5 15A5.5 5.5 0 1 1 17.5 15" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 2.5" strokeOpacity="0.75" />
+    {/* Small speed tick indicators */}
+    <path d="M5 16.5l1.2-1.2M19 16.5l-1.2-1.2M12 4v2" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.7" />
+    {/* Indicator needle pointing pointing to upper right (High speed) */}
+    <path d="M12 12l4.5-4.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    {/* Central hub element */}
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
+    <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="0.8" strokeOpacity="0.5" />
   </svg>
 );
 
 const ExpertIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={`${className} text-purple-400 group-hover:text-purple-300 transition-colors`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="6" height="6" rx="1.5" fill="currentColor" fillOpacity="0.15" />
-    <rect x="15" y="3" width="6" height="6" rx="1.5" fill="currentColor" fillOpacity="0.15" />
-    <rect x="9" y="15" width="6" height="6" rx="1.5" fill="currentColor" fillOpacity="0.15" />
-    <path d="M6 9v3a3 3 0 0 0 3 3h3" strokeWidth="2" />
-    <path d="M18 9v3a3 3 0 0 1-3 3h-3" strokeWidth="2" />
-    <path d="M12 15v3" strokeWidth="2" />
+  <svg 
+    className={`${className} text-amber-500 group-hover:text-amber-400 transition-all duration-300 filter drop-shadow-[0_0_5px_rgba(245,158,11,0.45)]`} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1.8" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    {/* Academic scholar/expert mortarboard cap */}
+    <path d="M12 3.5L2.5 8l9.5 4.5 9.5-4.5-9.5-4.5z" stroke="currentColor" strokeWidth="1.8" fill="currentColor" fillOpacity="0.10" />
+    <path d="M6 10.5v3.5c0 1.8 2.7 3.5 6 3.5s6-1.7 6-3.5v-3.5" stroke="currentColor" strokeWidth="1.8" fill="currentColor" fillOpacity="0.05" />
+    {/* Hanging credential tassel */}
+    <path d="M20.5 8.5v5.5" stroke="currentColor" strokeWidth="1" />
+    <circle cx="20.5" cy="14" r="1" fill="currentColor" />
+    {/* Central expert credential target point */}
+    <circle cx="12" cy="18.5" r="1.5" fill="currentColor" />
+    <path d="M12 14v2" stroke="currentColor" strokeWidth="1.2" strokeDasharray="1.5 1.5" />
   </svg>
 );
 
 const UltimateIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={`${className} text-amber-500 group-hover:text-amber-400 transition-colors`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" strokeWidth="1.5" fill="currentColor" fillOpacity="0.08" />
-    <path d="M12 6c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6-2.7-6-6-6z" strokeWidth="1.5" strokeDasharray="3 3" />
-    <path d="M12 8c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4z" strokeWidth="2.5" />
-    <circle cx="12" cy="12" r="1.5" fill="#f59e0b" />
+  <svg 
+    className={`${className} text-red-500 group-hover:text-red-400 transition-all duration-300 filter drop-shadow-[0_0_6px_rgba(239,68,68,0.5)]`} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1.8" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    {/* Circular energy boundary aura */}
+    <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.25" strokeDasharray="3 2" />
+    {/* High frequency energetic lightning bolt */}
+    <path 
+      d="M13.5 2L5.5 12h6.5l-2.5 10 9-10h-6.5L13.5 2z" 
+      fill="currentColor" 
+      fillOpacity="0.2" 
+      stroke="currentColor" 
+      strokeWidth="2.2" 
+      strokeLinejoin="miter" 
+    />
   </svg>
 );
 
@@ -748,7 +782,7 @@ export default function ChatPanel({
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg('AI 智能体文档生成已禁用：服务器端 AI 助手模块已被移除。请使用其他文档工具。');
+      setErrorMsg(`服务请求故障，请稍后重试: ${err.message}`);
     } finally {
       setIsGeneratingDocs(false);
     }
@@ -871,7 +905,7 @@ export default function ChatPanel({
       console.error(err);
       const assistantMsg: ChatMessage = {
         sender: 'assistant',
-        content: `⚠️ **AI 助手已禁用**：${err.name === 'TypeError' ? '无法连接到服务端。' : err.message}\n\n*(说明：服务器端 AI 对话模块已被移除。聊天面板目前只作为消息记录展示使用。)*`,
+        content: `❌ **AI 助手已禁用**：${err.name === 'TypeError' ? '无法连接到服务端。请检查服务端状态及网络联通性。' : err.message}\n\n*(提示：AI 助手模块已从本项目移除。若发生报错，请使用其他代码生成工具)*`,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         avatar: '',
       };
@@ -920,94 +954,105 @@ export default function ChatPanel({
       >
         <div className="max-w-5xl lg:max-w-[94%] xl:max-w-[90%] mx-auto w-full flex flex-col space-y-5 py-2 px-4 md:px-6">
           {activeMessages.map((msg, index) => {
-          const isUser = msg.sender === 'user';
-          return (
+            const isUser = msg.sender === 'user';
+            return (
+              <motion.div 
+                key={index}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col gap-2.5 text-left"
+              >
+                {/* Header Row: Avatar + Info (Center-aligned) */}
+                <div className="flex gap-3.5 items-center mb-1">
+                  {/* Avatar block */}
+                  {isUser ? (
+                    <img 
+                      src={msg.avatar} 
+                      alt="User" 
+                      className="w-11 h-11 rounded-full object-cover shrink-0 border border-primary/20"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
+                      <ModelIcon modelName={mainModel || 'GPT-4o'} size={24} className="shrink-0" />
+                    </div>
+                  )}
+
+                  {/* Info block (Username/Model + Time) */}
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[11px] font-bold ${isUser ? 'text-white' : 'text-[#3b82f6]'}`}>
+                      {isUser ? '你' : (mainModel || 'GPT-4o')}
+                    </span>
+                    <span className="text-[9px] text-on-surface/30 font-mono tracking-wide">{msg.time}</span>
+                  </div>
+                </div>
+
+                {/* Content block: Indented under name */}
+                <div className="flex flex-col gap-1 max-w-[90%] font-sans pl-[58px] text-left">
+                  <div className="bg-surface/50 border border-outline/30 px-3.5 py-2.5 rounded-xl text-on-surface text-[12px] leading-relaxed select-text space-y-1.5 w-fit max-w-full overflow-hidden">
+                    <FormatChatMessage content={msg.content} />
+                    {msg.attachment && (
+                      <CollapsibleCodeBlock 
+                        fileName={msg.attachment.fileName} 
+                        text={msg.attachment.text} 
+                      />
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+
+          {isGenerating && (
             <motion.div 
-              key={index}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex gap-3.5 ${isUser ? 'justify-start' : 'justify-start'}`}
+              className="flex flex-col gap-2.5 text-left"
             >
-              {/* Avatar block */}
-              {isUser ? (
-                <img 
-                  src={msg.avatar} 
-                  alt="User" 
-                  className="w-8 h-8 rounded-full object-cover shrink-0 border border-primary/20"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                  <Bot className="w-4.5 h-4.5 text-[#3b82f6]" />
+              {/* Header Row: Avatar + Loading info (Center-aligned) */}
+              <div className="flex gap-3.5 items-center mb-1">
+                {/* Avatar block with overlapping spinner */}
+                <div className="relative w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
+                  <ModelIcon modelName={mainModel || 'GPT-4o'} size={24} className="shrink-0 opacity-40 animate-pulse" />
+                  <Loader2 className="absolute inset-0 w-full h-full text-primary/80 animate-spin p-2" />
                 </div>
-              )}
 
-              {/* Message bubble */}
-              <div className="flex flex-col gap-1 max-w-[90%]">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[11px] font-bold ${isUser ? 'text-white' : 'text-[#3b82f6]'}`}>
-                    {isUser ? '你' : (mainModel || 'GPT-4o')}
+                {/* Info block (Username/Model + Loading status) */}
+                <div className="flex items-center gap-2 animate-pulse font-sans">
+                  <span className="text-[11px] font-bold text-[#3b82f6]">
+                    {mainModel} 智脑中枢正在计算中...
                   </span>
-                  <span className="text-[9px] text-on-surface/30 font-mono tracking-wide">{msg.time}</span>
+                  <span className="text-[9px] text-on-surface/30 font-mono">排队分析中</span>
                 </div>
-                
-                <div className="bg-surface/50 border border-outline/30 px-3.5 py-2.5 rounded-xl text-on-surface text-[12px] leading-relaxed select-text space-y-1.5 w-full max-w-full overflow-hidden">
-                  <FormatChatMessage content={msg.content} />
-                  {msg.attachment && (
-                    <CollapsibleCodeBlock 
-                      fileName={msg.attachment.fileName} 
-                      text={msg.attachment.text} 
-                    />
-                  )}
+              </div>
+
+              {/* Loading bubble: Indented */}
+              <div className="flex flex-col gap-1 max-w-[90%] font-sans pl-[58px] text-left">
+                <div className="bg-surface/30 border border-outline/20 px-3.5 py-2.5 rounded-xl text-on-surface/70 text-[12px] leading-relaxed select-none w-fit">
+                  <div className="flex items-center gap-1.5 py-0.5">
+                    <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce" />
+                  </div>
                 </div>
               </div>
             </motion.div>
-          );
-        })}
-
-        {isGenerating && (
-          <motion.div 
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex gap-3.5 justify-start mt-2"
-          >
-            {/* Avatar block */}
-            <div className="w-8 h-8 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-              <Loader2 className="w-4 h-4 text-[#3b82f6] animate-spin" />
-            </div>
-
-            {/* Message loading bubble */}
-            <div className="flex flex-col gap-1 max-w-[90%]">
-              <div className="flex items-center gap-2 animate-pulse">
-                <span className="text-[11px] font-bold text-[#3b82f6]">
-                  {mainModel} 智脑中枢正在计算中...
-                </span>
-                <span className="text-[9px] text-on-surface/30 font-mono">排队分析中</span>
-              </div>
-              
-              <div className="bg-surface/30 border border-outline/20 px-3.5 py-2.5 rounded-xl text-on-surface/70 text-[12px] leading-relaxed select-none">
-                <div className="flex items-center gap-1.5 py-0.5">
-                  <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce" />
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
+          )}
 
         {/* 1:1 Static Agent Execution Process (placed in between messages or at the bottom for fidelity to screenshot) */}
-        <div className="flex gap-3.5 mt-4 text-left">
-          <div className="w-8 h-8 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-            <Bot className="w-4.5 h-4.5 text-[#3b82f6]" />
-          </div>
+        <div className="flex flex-col gap-2.5 mt-4 text-left">
+          <div className="flex gap-3.5 items-center mb-1">
+            <div className="w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
+              <ModelIcon modelName="GPT-4o" size={24} className="shrink-0" />
+            </div>
 
-          <div className="flex flex-col gap-1 max-w-[90%] font-sans">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold text-[#3b82f6]">GPT-4o</span>
               <span className="text-[9px] text-on-surface/30 font-mono">12:00:01</span>
             </div>
+          </div>
 
+          <div className="flex flex-col gap-1 max-w-[90%] font-sans pl-[58px] text-left">
             <div className="bg-surface border border-outline/30 p-3.5 rounded-xl text-on-surface text-[12px] leading-relaxed space-y-3">
               <p className="text-on-surface/90">好的，我将为你创建一个完整的博客系统，技术栈为 <strong className="text-on-surface font-black">Vue3 + Node.js + MongoDB</strong>。我们将按下述步骤进行：</p>
               
@@ -1290,16 +1335,16 @@ export default function ChatPanel({
                         whileHover={{ x: 2 }}
                         transition={{ type: "spring", stiffness: 450, damping: 25 }}
                         className={`flex flex-col gap-0.5 p-2 rounded text-left transition-colors cursor-pointer select-none group ${
-                          permissionMode === 'performance' ? 'bg-blue-500/10 border border-blue-500/25 text-on-surface' : 'hover:bg-surface-bright text-on-surface/80 hover:text-on-surface'
+                          permissionMode === 'performance' ? 'bg-purple-500/10 border border-purple-500/25 text-on-surface' : 'hover:bg-surface-bright text-on-surface/80 hover:text-on-surface'
                         }`}
                         style={{ backfaceVisibility: "hidden", WebkitFontSmoothing: "subpixel-antialiased" }}
                       >
                         <div className="flex items-center justify-between text-[10.5px] font-bold">
-                          <div className="flex items-center gap-1.5 text-blue-400 font-sans group-hover:text-blue-300 transition-colors">
+                          <div className="flex items-center gap-1.5 text-purple-400 font-sans group-hover:text-purple-300 transition-colors">
                             <PerformanceIcon className="w-4 h-4" />
                             <span>性能模式 (半自动)</span>
                           </div>
-                          {permissionMode === 'performance' && <Check className="w-3 h-3 text-blue-400" />}
+                          {permissionMode === 'performance' && <Check className="w-3 h-3 text-purple-400" />}
                         </div>
                         <p className="text-[9px] leading-relaxed text-on-surface/50 font-medium whitespace-normal font-sans group-hover:text-on-surface/70 transition-colors">
                           自主加载各项基础工具逻辑，支持多模型智能混合。
@@ -1315,16 +1360,16 @@ export default function ChatPanel({
                         whileHover={{ x: 2 }}
                         transition={{ type: "spring", stiffness: 450, damping: 25 }}
                         className={`flex flex-col gap-0.5 p-2 rounded text-left transition-colors cursor-pointer select-none group ${
-                          permissionMode === 'expert' ? 'bg-purple-500/10 border border-purple-500/25 text-on-surface' : 'hover:bg-surface-bright text-on-surface/80 hover:text-on-surface'
+                          permissionMode === 'expert' ? 'bg-amber-500/10 border border-amber-500/25 text-on-surface' : 'hover:bg-surface-bright text-on-surface/80 hover:text-on-surface'
                         }`}
                         style={{ backfaceVisibility: "hidden", WebkitFontSmoothing: "subpixel-antialiased" }}
                       >
                         <div className="flex items-center justify-between text-[10.5px] font-bold">
-                          <div className="flex items-center gap-1.5 text-purple-400 font-sans group-hover:text-purple-300 transition-colors">
+                          <div className="flex items-center gap-1.5 text-amber-500 font-sans group-hover:text-amber-400 transition-colors">
                             <ExpertIcon className="w-4 h-4" />
                             <span>专家模式 (全自动)</span>
                           </div>
-                          {permissionMode === 'expert' && <Check className="w-3 h-3 text-purple-400" />}
+                          {permissionMode === 'expert' && <Check className="w-3 h-3 text-amber-500" />}
                         </div>
                         <p className="text-[9px] leading-relaxed text-on-surface/50 font-medium whitespace-normal font-sans group-hover:text-on-surface/70 transition-colors">
                           深度专家级 resource 调度，多模型高频协同攻坚复杂任务。
@@ -1340,16 +1385,16 @@ export default function ChatPanel({
                         whileHover={{ x: 2 }}
                         transition={{ type: "spring", stiffness: 450, damping: 25 }}
                         className={`flex flex-col gap-0.5 p-2 rounded text-left transition-colors cursor-pointer select-none group ${
-                          permissionMode === 'ultimate' ? 'bg-amber-500/10 border border-amber-500/25 text-on-surface' : 'hover:bg-surface-bright text-on-surface/80 hover:text-on-surface'
+                          permissionMode === 'ultimate' ? 'bg-red-500/10 border border-red-500/25 text-on-surface' : 'hover:bg-surface-bright text-on-surface/80 hover:text-on-surface'
                         }`}
                         style={{ backfaceVisibility: "hidden", WebkitFontSmoothing: "subpixel-antialiased" }}
                       >
                         <div className="flex items-center justify-between text-[10.5px] font-bold">
-                          <div className="flex items-center gap-1.5 text-amber-500 font-sans group-hover:text-amber-400 transition-colors">
+                          <div className="flex items-center gap-1.5 text-red-500 font-sans group-hover:text-red-400 transition-colors">
                             <UltimateIcon className="w-4 h-4" />
                             <span>极致模式 (全自动)</span>
                           </div>
-                          {permissionMode === 'ultimate' && <Check className="w-3 h-3 text-amber-500" />}
+                          {permissionMode === 'ultimate' && <Check className="w-3 h-3 text-red-500" />}
                         </div>
                         <p className="text-[9px] leading-relaxed text-on-surface/50 font-medium whitespace-normal font-sans group-hover:text-on-surface/70 transition-colors">
                           最大化释放算力，无中断调度全部工具加速实现诉求。
@@ -1655,7 +1700,7 @@ export default function ChatPanel({
 
 
       {/* Integrated Terminal Panel Stacked */}
-      <TerminalPanel />
+      <TerminalPanel permissionMode={permissionMode} />
     </div>
   );
 }

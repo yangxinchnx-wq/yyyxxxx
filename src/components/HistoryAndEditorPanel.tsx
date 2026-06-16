@@ -324,7 +324,7 @@ export default function HistoryAndEditorPanel({
         try {
           const parsed = JSON.parse(saved);
           return parsed.map((c: any) => {
-            let iconComponent = DefaultChatIcon;
+            let iconComponent: any = DefaultChatIcon;
             if (c.tag === 'VUE') iconComponent = Code;
             else if (c.tag === 'AUTH') iconComponent = Key;
             else if (c.tag === 'AI') iconComponent = Brain;
@@ -516,7 +516,7 @@ export default function HistoryAndEditorPanel({
   };
 
   const listContainerRef = React.useRef<HTMLDivElement>(null);
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const scrollContainerRef = React.useRef<any>(null);
 
   const filteredChats = chats.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -573,13 +573,6 @@ export default function HistoryAndEditorPanel({
                     >
                       <WindowsIcon className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                       <span>Windows 项目</span>
-                    </button>
-                    <button
-                      onClick={() => createChatWithOptions('harmony')}
-                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-surface-bright transition-colors cursor-pointer text-left font-medium text-on-surface hover:text-red-500"
-                    >
-                      <HarmonyOSIcon className="w-3.5 h-3.5 shrink-0" />
-                      <span>鸿蒙生态开发</span>
                     </button>
                   </div>
                 </>
