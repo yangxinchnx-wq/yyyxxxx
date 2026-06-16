@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ModelIcon } from './ModelIcon';
+import { encryptSecret, decryptSecret } from '../data/secrets';
 
 const PROVIDER_MODEL_REGISTRY: Record<string, { id: string; name: string }[]> = {
   xiaomi: [
@@ -238,10 +239,12 @@ export default function SettingsModal({
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
+          // Strip legacy 'groq' provider entries (no longer supported)
+          const filtered = parsed.filter((p: any) => p && p.id !== 'groq');
           // Identify any base providers missing from the loaded parsed array, e.g. newly introduced providers like 'xiaomi'
-          const existingIds = new Set(parsed.map((p: any) => p.id));
+          const existingIds = new Set(filtered.map((p: any) => p.id));
           const missingProviders = baseProviders.filter(bp => !existingIds.has(bp.id));
-          const combined = [...parsed, ...missingProviders];
+          const combined = [...filtered, ...missingProviders];
 
           // Sort combined based on baseOrder to match the exact sequence in baseProviders
           const baseOrder = baseProviders.map(bp => bp.id);
@@ -322,13 +325,41 @@ export default function SettingsModal({
   });
 
   useEffect(() => {
-    localStorage.setItem('cherry_providers_v2', JSON.stringify(providers));
-    window.dispatchEvent(new CustomEvent('providers_updated'));
+    let cancelled = false;
+    (async () => {
+      const persisted = await Promise.all(providers.map(async (p) => {
+        if (!p.apiKey) return p;
+        const enc = await encryptSecret(p.apiKey);
+        return { ...p, apiKey: enc };
+      }));
+      if (cancelled) return;
+      localStorage.setItem('cherry_providers_v2', JSON.stringify(persisted));
+      window.dispatchEvent(new CustomEvent('providers_updated'));
+    })();
+    return () => { cancelled = true; };
   }, [providers]);
 
   const [activeProviderId, setActiveProviderId] = useState<string>('xiaomi');
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [customModelVal, setCustomModelVal] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const decrypted = await Promise.all(providers.map(async (p) => {
+        if (!p.apiKey) return p;
+        if (!p.apiKey.startsWith('enc:v1:')) return p;
+        const plain = await decryptSecret(p.apiKey);
+        return { ...p, apiKey: plain };
+      }));
+      if (cancelled) return;
+      const changed = decrypted.some((d, i) => d.apiKey !== providers[i].apiKey);
+      if (changed) setProviders(decrypted);
+    })();
+    return () => { cancelled = true; };
+    // 仅在初始挂载时跑一次（避免每次 providers 变更都解密）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{
@@ -336,89 +367,11 @@ export default function SettingsModal({
     providerName: string;
     discoveredModels: { id: string; name: string }[];
   } | null>(null);
-  const [scanFilter, setScanFilter] = useState('');
-
-  // Helper definition to detect visual capability icons
-  const getModelCapabilities = (modelId: string) => {
-    const idLower = modelId.toLowerCase();
-    const caps = {
-      voice: false,
-      reasoning: false,
-      tools: false,
-      image: false,
-      other: true // always show general text-generation capability via Cpu
-    };
-
-    // 1. 推理模型 (Reasoning - Pink Brain)
-    if (
-      idLower.includes('reasoner') || 
-      idLower.includes('o1') || 
-      idLower.includes('r1') || 
-      idLower.includes('o3') || 
-      idLower.includes('reasoning') ||
-      idLower.includes('heavy')
-    ) {
-      caps.reasoning = true;
-    }
-
-    // 2. 语音模型 (Voice / Audio - Green Mic)
-    if (
-      idLower.includes('audio') || 
-      idLower.includes('voice') || 
-      idLower.includes('speech') || 
-      idLower.includes('tts') || 
-      idLower.includes('gemini') || 
-      idLower.includes('whisper') ||
-      idLower.includes('mic') ||
-      idLower.includes('omni')
-    ) {
-      caps.voice = true;
-    }
-
-    // 3. 工具 (Function calling - Yellow Wrench)
-    if (
-      idLower.includes('instruct') || 
-      idLower.includes('gpt') || 
-      idLower.includes('claude') || 
-      idLower.includes('gemini') || 
-      idLower.includes('chat') || 
-      idLower.includes('qwen') || 
-      idLower.includes('llama') || 
-      idLower.includes('mixtral') || 
-      idLower.includes('moonshot') ||
-      idLower.includes('tools') ||
-      idLower.includes('r1') ||
-      idLower.includes('o1') ||
-      idLower.includes('omni') ||
-      idLower.includes('custom-model-1')
-    ) {
-      caps.tools = true;
-    }
-
-    // 4. 图片生成/视觉 (Image Generation & Multi-modal - Purple Film)
-    if (
-      idLower.includes('vision') || 
-      idLower.includes('gpt-4o') || 
-      idLower.includes('gemini') || 
-      idLower.includes('claude-3-5') || 
-      idLower.includes('opus') || 
-      idLower.includes('image') || 
-      idLower.includes('dall-e') || 
-      idLower.includes('flux') || 
-      idLower.includes('sdxl') ||
-      idLower.includes('omni') ||
-      idLower.includes('midjourney')
-    ) {
-      caps.image = true;
-    }
-
-    return caps;
-  };
 
   const scanProviderModels = async (providerId: string) => {
     setIsScanning(true);
     setScanResult(null);
-    
+
     const targetProv = providers.find(p => p.id === providerId);
     if (!targetProv) {
       setIsScanning(false);
@@ -428,95 +381,68 @@ export default function SettingsModal({
     const { apiKey, baseUrl, defaultUrl } = targetProv;
     const urlToUse = baseUrl || defaultUrl;
 
-    if (urlToUse && urlToUse.startsWith('http')) {
-      try {
-        const fetchHeaders: Record<string, string> = {
-          'Content-Type': 'application/json'
-        };
-        if (apiKey) {
-          fetchHeaders['Authorization'] = `Bearer ${apiKey}`;
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-        const response = await fetch(`${urlToUse}/models`, {
-          method: 'GET',
-          headers: fetchHeaders,
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data && Array.isArray(data.data) && data.data.length > 0) {
-            const discovered = data.data.map((m: any) => {
-              const existing = targetProv.models.find(x => x.id === m.id);
-              return {
-                id: m.id,
-                name: m.id,
-                enabled: existing ? existing.enabled : false
-              };
-            });
-
-            setScanResult({
-              success: true,
-              providerName: targetProv.name,
-              discoveredModels: discovered
-            });
-
-            setProviders(prev => prev.map(p => {
-              if (p.id === providerId) {
-                return {
-                   ...p,
-                  models: discovered,
-                  scanned: true
-                };
-              }
-              return p;
-            }));
-
-            setIsScanning(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Real API model network scan fallback active:', err);
-      }
+    if (!urlToUse || !/^https?:\/\//i.test(urlToUse)) {
+      setIsScanning(false);
+      setScanResult({
+        success: false,
+        providerName: targetProv.name,
+        discoveredModels: [],
+        error: '请先填写「接口重定向网址」(baseUrl)',
+      } as any);
+      return;
     }
 
-    // Network scan fallback
-    setTimeout(() => {
-      setIsScanning(false);
-      
-      const defaultModels = PROVIDER_MODEL_REGISTRY[providerId] || [];
-      const discovered = defaultModels.map(m => {
-        const existing = targetProv.models.find(x => x.id === m.id);
-        return {
-          id: m.id,
-          name: m.id,
-          enabled: existing ? existing.enabled : false
-        };
+    try {
+      const r = await fetch('/api/providers/scan-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: urlToUse, apiKey, defaultUrl }),
       });
-      
-      setProviders(prev => prev.map(p => {
-        if (p.id === providerId) {
+      const data = await r.json();
+      if (data?.success && Array.isArray(data.models)) {
+        const discovered = data.models.map((m: any) => {
+          const existing = targetProv.models.find(x => x.id === m.id);
           return {
-            ...p,
-            models: discovered,
-            scanned: true
+            id: m.id,
+            name: m.id,
+            enabled: existing ? existing.enabled : false,
           };
-        }
-        return p;
-      }));
-
+        });
+        setScanResult({
+          success: true,
+          providerName: targetProv.name,
+          discoveredModels: discovered,
+          latency: data.latency,
+        } as any);
+        setProviders(prev => prev.map(p =>
+          p.id === providerId
+            ? { ...p, models: discovered, scanned: true, status: 'success' as const, errorMessage: undefined }
+            : p
+        ));
+      } else {
+        setScanResult({
+          success: false,
+          providerName: targetProv.name,
+          discoveredModels: [],
+          error: data?.error || '未扫描到任何模型',
+        } as any);
+        setProviders(prev => prev.map(p =>
+          p.id === providerId ? { ...p, status: 'failed' as const, errorMessage: data?.error || '扫描失败' } : p
+        ));
+      }
+    } catch (err: any) {
       setScanResult({
-        success: true,
+        success: false,
         providerName: targetProv.name,
-        discoveredModels: discovered
-      });
-    }, 1800);
+        discoveredModels: [],
+        error: `请求扫描失败: ${err?.message || err}`,
+      } as any);
+      setProviders(prev => prev.map(p =>
+        p.id === providerId ? { ...p, status: 'failed' as const, errorMessage: '扫描请求失败' } : p
+      ));
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const toggleProviderEnabled = (id: string) => {
@@ -596,29 +522,56 @@ export default function SettingsModal({
     setCustomModelVal('');
   };
 
-  const testProviderConnection = (providerId: string) => {
+  const testProviderConnection = async (providerId: string) => {
     setProviders(prev => prev.map(p => p.id === providerId ? { ...p, status: 'loading', errorMessage: undefined } : p));
-    setTimeout(() => {
-      setProviders(prev => prev.map(p => {
-        if (p.id === providerId) {
-          if (!p.apiKey) {
-            return {
-              ...p,
-              status: 'failed',
-              errorMessage: '物理端点校验失败: 密钥串格式不合法或缺失 sk 令牌字符'
-            };
-          }
-          const isMockSuccess = p.apiKey.trim().length > 6;
-          return {
-            ...p,
-            status: isMockSuccess ? 'success' : 'failed',
-            delay: Math.floor(Math.random() * 40) + 12,
-            errorMessage: isMockSuccess ? undefined : '连接主机超时: 握手会话(401 Unauthorized)'
-          };
-        }
-        return p;
-      }));
-    }, 1200);
+    const target = providers.find(p => p.id === providerId);
+    if (!target) return;
+    if (!target.apiKey || !target.apiKey.trim()) {
+      setProviders(prev => prev.map(p => p.id === providerId ? {
+        ...p,
+        status: 'failed',
+        errorMessage: '请先填写 API 密钥'
+      } : p));
+      return;
+    }
+    const urlToUse = target.baseUrl || target.defaultUrl;
+    if (!urlToUse || !/^https?:\/\//i.test(urlToUse)) {
+      setProviders(prev => prev.map(p => p.id === providerId ? {
+        ...p,
+        status: 'failed',
+        errorMessage: '请先填写「接口重定向网址」'
+      } : p));
+      return;
+    }
+    try {
+      const probeModel = target.models.find(m => m.enabled)?.id || target.customModels[0];
+      const r = await fetch('/api/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: urlToUse, apiKey: target.apiKey, defaultUrl: target.defaultUrl, model: probeModel }),
+      });
+      const data = await r.json();
+      if (data?.success) {
+        setProviders(prev => prev.map(p => p.id === providerId ? {
+          ...p,
+          status: 'success',
+          delay: data.latency,
+          errorMessage: undefined,
+        } : p));
+      } else {
+        setProviders(prev => prev.map(p => p.id === providerId ? {
+          ...p,
+          status: 'failed',
+          errorMessage: data?.error || '连接失败',
+        } : p));
+      }
+    } catch (err: any) {
+      setProviders(prev => prev.map(p => p.id === providerId ? {
+        ...p,
+        status: 'failed',
+        errorMessage: `测试请求失败: ${err?.message || err}`,
+      } : p));
+    }
   };
 
   // Tab 3: Local Model settings
@@ -1051,8 +1004,11 @@ export default function SettingsModal({
                               }`}
                             >
                               <div className="flex items-center gap-2.5 truncate">
-                                <ModelIcon modelName={p.id} size={15} className="shrink-0" />
+                                <ModelIcon modelName={p.id} size={22} className="shrink-0" />
                                 <span className="truncate">{p.name}</span>
+                                {p.id === 'custom' && (
+                                  <Plus className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                )}
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {p.enabled && p.status === 'success' && p.delay && (
@@ -1112,9 +1068,9 @@ export default function SettingsModal({
                           {/* Active Provider Info Panel Header */}
                           <div className="flex items-center justify-between pb-4 border-b border-[var(--color-outline)]/15 shrink-0">
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2.5">
-                                <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: activeProvider.color }} />
-                                <h4 className="text-base font-black text-[var(--color-on-surface)]">{activeProvider.name}</h4>
+                              <div className="flex items-center gap-3">
+                                <ModelIcon modelName={activeProvider.id} size={28} className="shrink-0" />
+                                <h4 className="text-xl font-black text-[var(--color-on-surface)]">{activeProvider.name}</h4>
                               </div>
                               <p className="text-xs text-on-surface/50 leading-relaxed">{activeProvider.desc}</p>
                             </div>
@@ -1225,7 +1181,7 @@ export default function SettingsModal({
                                   className="text-[10px] px-3 py-1.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/20 text-[var(--color-primary)] hover:text-white rounded-lg font-extrabold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
                                 >
                                   {isScanning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                                  <span>{isScanning ? '获取中...' : '获取模型'}</span>
+                                  <span>{isScanning ? '获取中...' : '获取模型列表'}</span>
                                 </button>
                               </div>
 
@@ -1245,7 +1201,6 @@ export default function SettingsModal({
                                       <button
                                         onClick={() => {
                                           setScanResult(null);
-                                          setScanFilter('');
                                         }}
                                         className="p-1 hover:bg-[var(--color-primary)]/10 rounded-md text-[var(--color-primary)] cursor-pointer transition-colors"
                                       >
@@ -1253,59 +1208,28 @@ export default function SettingsModal({
                                       </button>
                                     </div>
 
-                                    {/* search and filter input box */}
-                                    <div className="relative">
-                                      <input
-                                        type="text"
-                                        placeholder="🔍 输入模型名称过滤搜索..."
-                                        value={scanFilter}
-                                        onChange={(e) => setScanFilter(e.target.value)}
-                                        className="w-full text-[10.5px] px-2.5 py-1.5 bg-[var(--color-bg)] border border-[var(--color-outline)]/15 focus:border-[var(--color-primary)] rounded-lg text-on-surface outline-none font-mono placeholder-on-surface/40 focus:ring-1 focus:ring-[var(--color-primary)]/20"
-                                      />
-                                      {scanFilter && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setScanFilter('')}
-                                          className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-on-surface/10 rounded-md text-on-surface/40 hover:text-on-surface cursor-pointer"
-                                        >
-                                          <X className="w-2.5 h-2.5" />
-                                        </button>
-                                      )}
-                                    </div>
-
+                                    {/* search and filter removed — keep raw scan output */}
                                     <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
                                       {(() => {
-                                        const filtered = scanResult.discoveredModels.filter(m =>
-                                          m.id.toLowerCase().includes(scanFilter.toLowerCase())
-                                        );
-                                        if (filtered.length === 0) {
+                                        const list = scanResult.discoveredModels;
+                                        if (!list || list.length === 0) {
                                           return (
                                             <p className="text-[11px] text-on-surface/40 py-2.5 text-center">
-                                              {scanResult.discoveredModels.length === 0 ? '未检索到该端点的公开大模型实例' : '未匹配到相关模型，请重新输入'}
+                                              {(scanResult as any).error || '未检索到该端点的公开大模型实例'}
                                             </p>
                                           );
                                         }
-                                        return filtered.map((m) => {
-                                          const caps = getModelCapabilities(m.id);
-                                          // Find if model is currently enabled
+                                        return list.map((m) => {
                                           const isAlreadySelected = activeProvider.models.some(model => model.id === m.id && model.enabled);
 
                                           return (
                                             <div key={m.id} className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-[var(--color-bg)]/80 border border-[var(--color-outline)]/10 text-[11px]">
-                                              <div className="flex items-center gap-2 text-left max-w-[65%] truncate">
-                                                <ModelIcon modelName={m.id} size={15} className="shrink-0 animate-pulse" />
+                                              <div className="flex items-center gap-2 text-left max-w-[80%] truncate">
+                                                <ModelIcon modelName={m.id} size={22} className="shrink-0 animate-pulse" />
                                                 <span className="font-mono text-on-surface font-extrabold truncate" title={m.id}>{m.id}</span>
                                               </div>
 
-                                              {/* Actions & Caps */}
-                                              <div className="flex items-center gap-2.5 shrink-0">
-                                                <div className="flex items-center gap-1.5 bg-on-surface/5 px-1.5 py-0.5 rounded border border-white/5 text-[9px] text-on-surface/55 font-bold">
-                                                  {caps.voice && <span className="text-emerald-400">语音</span>}
-                                                  {caps.reasoning && <span className="text-pink-400">推理</span>}
-                                                  {caps.tools && <span className="text-yellow-400">工具</span>}
-                                                  {caps.image && <span className="text-purple-400">多模态</span>}
-                                                </div>
-
+                                              <div className="flex items-center shrink-0">
                                                 <button
                                                   type="button"
                                                   onClick={() => {
@@ -1347,7 +1271,7 @@ export default function SettingsModal({
                                 {activeProvider.models.filter(m => m.enabled).length === 0 && activeProvider.customModels.length === 0 && (
                                   <div className="col-span-2 py-6 text-center text-xs text-[var(--color-on-surface)]/40 flex flex-col items-center justify-center gap-1.5 border border-dashed border-[var(--color-outline)]/15 rounded-xl bg-[var(--color-surface-bright)]/10">
                                     <Layers className="w-5 h-5 opacity-40 animate-pulse text-[var(--color-primary)]" />
-                                    <span>暂无就绪模型，请点击下方「在线精准同步与智能探测」获取并点击「+」添加</span>
+                                    <span>暂无选中模型</span>
                                   </div>
                                 )}
                                 {activeProvider.models
@@ -1362,37 +1286,28 @@ export default function SettingsModal({
                                     return passesExclusion && model.enabled;
                                   })
                                   .map((model) => {
-                                    const caps = getModelCapabilities(model.id);
                                     return (
-                                      <motion.div 
+                                      <motion.div
                                         key={model.id}
                                         whileHover={activeProvider.enabled ? { y: -1, scale: 1.01 } : {}}
                                         className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-all ${
-                                          !activeProvider.enabled 
+                                          !activeProvider.enabled
                                             ? 'opacity-40 cursor-not-allowed border-[var(--color-outline)]/10 bg-[var(--color-bg)]/35'
                                             : 'bg-[var(--color-primary)]/10 border-[var(--color-primary)]/45 text-[var(--color-on-surface)] font-bold shadow-sm'
                                         }`}
                                       >
-                                        <div className="flex items-center gap-2 truncate text-left max-w-[60%]">
-                                          <ModelIcon modelName={model.id} size={13} className="shrink-0" />
+                                        <div className="flex items-center gap-2 truncate text-left max-w-[75%]">
+                                          <ModelIcon modelName={model.id} size={20} className="shrink-0" />
                                           <span className="font-mono text-[11.5px] truncate text-on-surface font-extrabold" title={model.id}>{model.id}</span>
                                         </div>
-                                        
-                                        {/* Capabilities badges & minus button */}
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <div className="flex items-center gap-1 bg-black/30 px-1 py-0.5 rounded border border-white/5 text-[9px] text-on-surface/40 font-bold scale-90">
-                                            {caps.voice && <span className="text-emerald-400">语音</span>}
-                                            {caps.reasoning && <span className="text-pink-400">推理</span>}
-                                            {caps.tools && <span className="text-yellow-400">工具</span>}
-                                            {caps.image && <span className="text-purple-400">多模态</span>}
-                                          </div>
 
+                                        <div className="flex items-center shrink-0">
                                           <button
                                             type="button"
                                             disabled={!activeProvider.enabled}
                                             onClick={() => toggleModelEnabled(activeProvider.id, model.id)}
                                             className="w-5.5 h-5.5 rounded-md flex items-center justify-center font-bold text-xs bg-rose-500/10 text-rose-550 hover:bg-rose-500 hover:text-white disabled:pointer-events-none disabled:opacity-30 active:scale-95 transition-all cursor-pointer shadow-sm"
-                                            title="自已选中模型中取消掉这个模型"
+                                            title="从已选中模型中移除"
                                           >
                                             -
                                           </button>
@@ -1412,27 +1327,23 @@ export default function SettingsModal({
                                            !idLower.includes('temp');
                                   })
                                   .map((cm) => {
-                                    const caps = getModelCapabilities(cm);
                                     return (
-                                      <motion.div 
+                                      <motion.div
                                         key={cm}
                                         whileHover={{ y: -1 }}
                                         className="flex items-center justify-between p-2.5 rounded-xl border text-xs bg-[var(--color-primary)]/10 border-[var(--color-primary)]/30 text-[var(--color-on-surface)] shadow-inner"
                                       >
-                                        <div className="flex items-center gap-2 truncate font-mono text-[11.5px] text-left max-w-[55%]">
-                                          <ModelIcon modelName={cm} size={13} className="shrink-0" />
+                                        <div className="flex items-center gap-2 truncate font-mono text-[11.5px] text-left max-w-[80%]">
+                                          <ModelIcon modelName={cm} size={20} className="shrink-0" />
                                           <span className="truncate text-on-surface font-bold" title={cm}>{cm}</span>
                                         </div>
-                                        
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <div className="flex items-center gap-1 bg-black/30 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                            {caps.reasoning && <span className="text-pink-400">推理</span>}
-                                            {caps.image && <span className="text-purple-400">多模态</span>}
-                                          </div>
+
+                                        <div className="flex items-center shrink-0">
                                           <button
                                             disabled={!activeProvider.enabled}
                                             onClick={() => removeCustomModel(activeProvider.id, cm)}
                                             className="p-1 hover:bg-red-500/10 rounded-md text-on-surface/40 hover:text-red-400 cursor-pointer transition-colors"
+                                            title="移除此登记模型"
                                           >
                                             <Trash2 className="w-3.5 h-3.5" />
                                           </button>

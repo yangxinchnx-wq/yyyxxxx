@@ -974,7 +974,7 @@ export default function ChatPanel({
                     />
                   ) : (
                     <div className="w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
-                      <ModelIcon modelName={mainModel || 'GPT-4o'} size={24} className="shrink-0" />
+                      <ModelIcon modelName={mainModel || 'GPT-4o'} size={32} className="shrink-0" />
                     </div>
                   )}
 
@@ -1013,7 +1013,7 @@ export default function ChatPanel({
               <div className="flex gap-3.5 items-center mb-1">
                 {/* Avatar block with overlapping spinner */}
                 <div className="relative w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
-                  <ModelIcon modelName={mainModel || 'GPT-4o'} size={24} className="shrink-0 opacity-40 animate-pulse" />
+                  <ModelIcon modelName={mainModel || 'GPT-4o'} size={32} className="shrink-0 opacity-40 animate-pulse" />
                   <Loader2 className="absolute inset-0 w-full h-full text-primary/80 animate-spin p-2" />
                 </div>
 
@@ -1043,7 +1043,7 @@ export default function ChatPanel({
         <div className="flex flex-col gap-2.5 mt-4 text-left">
           <div className="flex gap-3.5 items-center mb-1">
             <div className="w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
-              <ModelIcon modelName="GPT-4o" size={24} className="shrink-0" />
+              <ModelIcon modelName="GPT-4o" size={32} className="shrink-0" />
             </div>
 
             <div className="flex items-center gap-2">

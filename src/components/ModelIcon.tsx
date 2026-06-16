@@ -1,7 +1,11 @@
 import React from 'react';
-import { ModelIcon as LobeModelIcon, SiliconCloud } from '@lobehub/icons';
+import { ModelIcon as LobeModelIcon } from '@lobehub/icons';
 // @ts-ignore
-import xiaomiLogoImg from '../assets/xiaomi.svg';
+import xiaomiLogoImg from '../assets/xiaomi.webp';
+// @ts-ignore
+import claudeLogoImg from '../assets/claude.webp';
+// @ts-ignore
+import siliconflowLogoImg from '../assets/siliconflow.svg';
 
 interface ModelIconProps {
   modelName: string;
@@ -30,6 +34,11 @@ const isXiaomi = (name: string): boolean => {
   );
 };
 
+const isClaude = (name: string): boolean => {
+  const lower = (name || '').trim().toLowerCase();
+  return lower.includes('claude') || lower === 'anthropic';
+};
+
 export const ModelIcon: React.FC<ModelIconProps> = ({ modelName, className = "w-4 h-4", size = 16 }) => {
   const modelId = (modelName || '').trim().toLowerCase();
 
@@ -37,8 +46,20 @@ export const ModelIcon: React.FC<ModelIconProps> = ({ modelName, className = "w-
     return (
       <img
         src={xiaomiLogoImg}
-        alt="Xiaomi"
-        className={`${className} object-contain inline-block shrink-0`}
+        alt="Xiaomi MiMo"
+        className={`${className} object-contain inline-block shrink-0 rounded-md`}
+        style={{ width: size, height: size }}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  if (isClaude(modelName)) {
+    return (
+      <img
+        src={claudeLogoImg}
+        alt="Claude"
+        className={`${className} object-contain inline-block shrink-0 rounded-md`}
         style={{ width: size, height: size }}
         referrerPolicy="no-referrer"
       />
@@ -47,10 +68,12 @@ export const ModelIcon: React.FC<ModelIconProps> = ({ modelName, className = "w-
 
   if (isSiliconFlow(modelName)) {
     return (
-      <SiliconCloud.Color
-        size={size}
-        className={className}
+      <img
+        src={siliconflowLogoImg}
+        alt="SiliconFlow"
+        className={`${className} object-contain inline-block shrink-0 rounded-md`}
         style={{ width: size, height: size }}
+        referrerPolicy="no-referrer"
       />
     );
   }

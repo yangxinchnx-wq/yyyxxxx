@@ -112,6 +112,115 @@ async function startServer() {
   // SSE 必须单独挂载（路径精确匹配）
   app.get("/api/events/stream", backendSseProxy);
 
+  // ============================================================
+  // 真实代理：上游 LLM 服务的 /models 列表扫描
+  // 浏览器直接 fetch 容易被 CORS 拦截，由 3000 服务端代为请求
+  // ============================================================
+  app.post("/api/providers/scan-models", async (req, res) => {
+    const { baseUrl, apiKey, defaultUrl } = req.body || {};
+    const target = (baseUrl && baseUrl.trim()) || (defaultUrl && defaultUrl.trim());
+    if (!target || !/^https?:\/\//i.test(target)) {
+      return res.status(400).json({ success: false, error: "接口重定向网址 (baseUrl) 非法或缺失" });
+    }
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (apiKey && apiKey.trim()) headers["Authorization"] = `Bearer ${apiKey.trim()}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const t0 = Date.now();
+    try {
+      const upstream = await fetch(target.replace(/\/+$/, "") + "/models", {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+      const latency = Date.now() - t0;
+      const text = await upstream.text();
+      if (!upstream.ok) {
+        return res.status(upstream.status).json({
+          success: false,
+          error: `上游 ${upstream.status} ${upstream.statusText}`,
+          body: text.slice(0, 500),
+          latency,
+        });
+      }
+      let data: any;
+      try { data = JSON.parse(text); } catch { return res.status(502).json({ success: false, error: "上游响应不是 JSON", body: text.slice(0, 500) }); }
+      const list = Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.models) ? data.models
+        : Array.isArray(data) ? data
+        : [];
+      const models = list
+        .map((m: any) => ({ id: typeof m === "string" ? m : (m.id || m.name || m.model), name: typeof m === "string" ? m : (m.id || m.name || m.model) }))
+        .filter((m: any) => !!m.id)
+        .slice(0, 500);
+      res.json({ success: true, count: models.length, models, latency });
+    } catch (err: any) {
+      const latency = Date.now() - t0;
+      res.status(502).json({
+        success: false,
+        error: err.name === "AbortError" ? `请求超时（>15s）: ${target}` : (err.message || "上游不可达"),
+        latency,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
+  // 真实测试：直接发一个最小 chat-completion 请求，验证鉴权 + 连通
+  app.post("/api/providers/test", async (req, res) => {
+    const { baseUrl, apiKey, defaultUrl, model } = req.body || {};
+    const target = (baseUrl && baseUrl.trim()) || (defaultUrl && defaultUrl.trim());
+    if (!target || !/^https?:\/\//i.test(target)) {
+      return res.status(400).json({ success: false, error: "接口重定向网址 (baseUrl) 非法或缺失" });
+    }
+    if (!apiKey || !apiKey.trim()) {
+      return res.status(400).json({ success: false, error: "API 密钥为空，请先填写密钥再测试" });
+    }
+    const headers: Record<string, string> = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey.trim()}` };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const t0 = Date.now();
+    try {
+      // 先尝试 chat/completions，失败则回退到 /models 只验证鉴权
+      const probe = await fetch(target.replace(/\/+$/, "") + "/chat/completions", {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: model || "gpt-3.5-turbo",
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1,
+          stream: false,
+        }),
+      });
+      const latency = Date.now() - t0;
+      const text = await probe.text();
+      if (probe.ok) {
+        res.json({ success: true, latency, status: probe.status, snippet: text.slice(0, 300) });
+      } else {
+        // 鉴权失败明确
+        const authFail = probe.status === 401 || probe.status === 403;
+        res.status(probe.status).json({
+          success: false,
+          latency,
+          status: probe.status,
+          error: authFail ? `鉴权失败 (${probe.status})，请检查 API 密钥` : `上游 ${probe.status} ${probe.statusText}`,
+          snippet: text.slice(0, 300),
+        });
+      }
+    } catch (err: any) {
+      const latency = Date.now() - t0;
+      res.status(502).json({
+        success: false,
+        latency,
+        error: err.name === "AbortError" ? `请求超时（>12s）: ${target}` : (err.message || "上游不可达"),
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
   // WebSocket upgrade
   app.get("/ws", backendWsProxy as any);
   // 兼容 /ws/ 前缀

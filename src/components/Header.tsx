@@ -22,7 +22,7 @@ const getProviderIdForModel = (modelName: string): string => {
   if (lower.includes('gemini')) return 'gemini';
   if (lower.includes('qwen') || lower.includes('siliconflow')) return 'siliconflow';
   if (lower.includes('moonshot') || lower.includes('kimi')) return 'moonshot';
-  if (lower.includes('llama') || lower.includes('mixtral') || lower.includes('gemma') || lower.includes('groq')) return 'groq';
+  if (lower.includes('llama') || lower.includes('mixtral') || lower.includes('gemma')) return 'groq';
   if (lower.includes('(本地)') || lower.includes('local')) return 'local';
   return 'unknown';
 };
@@ -50,7 +50,7 @@ const getModelStatusResolver = (): ((modelName: string) => ModelStatus) => {
       }
 
       const isEnabled = !!prov.enabled;
-      const hasApiKey = prov.apiKey && prov.apiKey.trim().length > 0;
+      const hasApiKey = !!(prov.apiKey && prov.apiKey.trim().length > 0);
       const isError = prov.status === 'error';
 
       if (!isEnabled) {
@@ -191,7 +191,7 @@ const SecondaryModelSelector = memo(({
                             
                             {/* Stylized native select dropdown without status dot */}
                             <div className="relative flex items-center gap-1.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-bright)] border border-[var(--color-outline)]/30 rounded px-2 py-[3px] cursor-pointer outline-none transition-all">
-                              <ModelIcon modelName={sm.name} size={13} className="shrink-0" />
+                              <ModelIcon modelName={sm.name} size={20} className="shrink-0" />
                               <select
                                 value={sm.name}
                                 onChange={(e) => {
@@ -307,7 +307,7 @@ const SecondaryModelSelector = memo(({
                           className="text-left px-2.5 py-1.5 bg-[var(--color-surface-bright)]/40 hover:bg-primary/10 border border-[var(--color-outline)]/20 hover:border-primary/30 text-[10px] text-[var(--color-on-surface)]/80 hover:text-primary transition-all duration-200 rounded-lg cursor-pointer truncate font-semibold shadow-sm flex items-center gap-1.5"
                           title={`追加 ${m}`}
                         >
-                          <ModelIcon modelName={m} size={11} className="shrink-0" />
+                          <ModelIcon modelName={m} size={16} className="shrink-0" />
                           <span className="truncate">+ {m}</span>
                         </button>
                       );
@@ -668,7 +668,7 @@ export default function Header({
               onClick={() => setShowModelMenu(!showModelMenu)}
               className="flex items-center gap-1.5 bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface)]/90 border border-[var(--color-outline)]/30 hover:border-[var(--color-outline)]/60 px-3 h-[30px] rounded-full text-xs text-[var(--color-on-surface)] active:scale-95 transition-all cursor-pointer font-bold select-none overflow-visible"
             >
-              <ModelIcon modelName={mainModel} size={14} className="shrink-0" />
+              <ModelIcon modelName={mainModel} size={20} className="shrink-0" />
               <div className="h-4 overflow-hidden relative flex items-center justify-center min-w-[84px]">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.span
@@ -719,7 +719,7 @@ export default function Header({
                           }`}
                         >
                           <span className="relative z-10 flex items-center gap-2">
-                            <ModelIcon modelName={m} size={14} className="shrink-0" />
+                            <ModelIcon modelName={m} size={20} className="shrink-0" />
                             <span>{m}</span>
                           </span>
                           {isSelected && (
