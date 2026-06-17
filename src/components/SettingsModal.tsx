@@ -221,6 +221,32 @@ export default function SettingsModal({
         color: '#f43f5e'
       },
       {
+        id: 'minimax',
+        name: 'MiniMax',
+        desc: '海螺ABAB系列多模态语言模型与 MiniMax-M3 推理模型',
+        enabled: false,
+        apiKey: '',
+        baseUrl: 'https://api.minimax.io/v1',
+        defaultUrl: 'https://api.minimax.io/v1',
+        models: [],
+        customModels: [],
+        status: 'idle' as const,
+        color: '#f97316'
+      },
+      {
+        id: 'zhipu',
+        name: '智谱 AI ChatGLM',
+        desc: '智谱 GLM-4.5 / GLM-5 系列大语言与多模态模型',
+        enabled: false,
+        apiKey: '',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        defaultUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        models: [],
+        customModels: [],
+        status: 'idle' as const,
+        color: '#3b82f6'
+      },
+      {
         id: 'custom',
         name: '自定义提供商',
         desc: '自定义/中转等兼容 OpenAI 接口标准的第三方服务商',
@@ -1067,11 +1093,18 @@ export default function SettingsModal({
                               }`}
                             >
                               <div className="flex items-center gap-2.5 truncate">
-                                <ModelIcon modelName={p.id} size={22} className="shrink-0" />
-                                <span className="truncate">{p.name}</span>
-                                {p.id === 'custom' && (
-                                  <Plus className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                {(p.id === 'custom' || p.id.startsWith('custom_')) ? (
+                                  <span
+                                    className="shrink-0 inline-flex items-center justify-center rounded-md border border-dashed border-[var(--color-outline)]/30 bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+                                    style={{ width: 22, height: 22 }}
+                                    aria-label="Custom provider"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                                  </span>
+                                ) : (
+                                  <ModelIcon modelName={p.id} size={22} className="shrink-0" />
                                 )}
+                                <span className="truncate">{p.name}</span>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {p.enabled && p.status === 'success' && p.delay && (
