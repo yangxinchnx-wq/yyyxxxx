@@ -19,6 +19,20 @@ import { mockFileContents } from './data/mockFiles';
 import { SecondaryModel } from './types';
 import { useTheme, THEME_PRESETS } from './context/ThemeContext';
 import { X } from 'lucide-react';
+import { decryptSecret } from './data/secrets';
+
+// ============================================================
+// Provider 桥接层（设计文档：UI/连接.md §2.3 §4.1）
+// ============================================================
+type ModelProviderEntry = {
+  providerId: string;
+  providerName: string;
+  baseUrl: string;
+  apiKey: string;            // 来自 localStorage（可能已加密也可能明文）
+  model: string;
+  enabledInSettings: boolean;
+};
+type ModelProviderMap = Record<string, ModelProviderEntry>;
 
 export default function App() {
   // Model Settings State
@@ -29,6 +43,61 @@ export default function App() {
   ]);
   const [mixedTasks, setMixedTasks] = useState(true);
   const [currentPermissionMode, setCurrentPermissionMode] = useState<'normal' | 'performance' | 'ultimate' | 'expert'>('normal');
+
+  // Provider 桥接层 - 装载 cherry_model_provider_map_v1
+  const [modelProviderMap, setModelProviderMap] = useState<ModelProviderMap>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = localStorage.getItem('cherry_model_provider_map_v1');
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as ModelProviderMap;
+        // 解密所有 apiKey（兼容旧的 enc:v1: 格式）
+        const decrypted = await Promise.all(
+          Object.entries(parsed).map(async ([name, entry]) => {
+            if (entry.apiKey && entry.apiKey.startsWith('enc:v1:')) {
+              try {
+                return [name, { ...entry, apiKey: await decryptSecret(entry.apiKey) }];
+              } catch { return [name, entry]; }
+            }
+            return [name, entry];
+          })
+        );
+        if (cancelled) return;
+        setModelProviderMap(Object.fromEntries(decrypted) as ModelProviderMap);
+      } catch (e) {
+        console.error('Failed to load modelProviderMap', e);
+      }
+    })();
+
+    const handler = () => {
+      // 重新走加载逻辑
+      (async () => {
+        try {
+          const raw = localStorage.getItem('cherry_model_provider_map_v1');
+          if (!raw) return;
+          const parsed = JSON.parse(raw) as ModelProviderMap;
+          const decrypted = await Promise.all(
+            Object.entries(parsed).map(async ([name, entry]) => {
+              if (entry.apiKey && entry.apiKey.startsWith('enc:v1:')) {
+                try {
+                  return [name, { ...entry, apiKey: await decryptSecret(entry.apiKey) }];
+                } catch { return [name, entry]; }
+              }
+              return [name, entry];
+            })
+          );
+          setModelProviderMap(Object.fromEntries(decrypted) as ModelProviderMap);
+        } catch {}
+      })();
+    };
+    window.addEventListener('model_provider_map_updated', handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('model_provider_map_updated', handler);
+    };
+  }, []);
 
   // Synchronize multi-model mixedTasks based on the active mode (only 'normal' mode needs it disabled)
   useEffect(() => {
@@ -643,9 +712,9 @@ export default function App() {
 
         {/* Column 4: Main Chat Workspace Output Pane + Terminal Logs */}
         <div style={{ '--color-primary': primaryColorTargets.chatPanel ? 'var(--color-main-primary)' : '#8c8c8c' } as React.CSSProperties} className="flex-1 h-full min-w-0">
-          <ChatPanel 
-            permissionMode={currentPermissionMode} 
-            setPermissionMode={setCurrentPermissionMode} 
+          <ChatPanel
+            permissionMode={currentPermissionMode}
+            setPermissionMode={setCurrentPermissionMode}
             primaryColorTargets={primaryColorTargets}
             selectedChatId={selectedChatId}
             mainModel={mainModel}
@@ -653,6 +722,7 @@ export default function App() {
             mixedTasks={mixedTasks}
             selectedFile={selectedFile}
             editorContent={editorContent}
+            modelProviderMap={modelProviderMap}
           />
         </div>
 

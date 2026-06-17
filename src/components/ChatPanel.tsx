@@ -264,6 +264,14 @@ interface ChatPanelProps {
   mixedTasks?: boolean;
   selectedFile?: string;
   editorContent?: string;
+  modelProviderMap?: Record<string, {
+    providerId: string;
+    providerName: string;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    enabledInSettings: boolean;
+  }>;
 }
 
 export interface ChatSettingsItem {
@@ -408,8 +416,165 @@ function getSettingsSummary(s: ChatSettingsItem): string {
   return `${pMap[s.personality]} | ${tMap[s.tone]} | ${ctxStr} 窗口 | ${em} (${s.enabledSkills.length} SK)`;
 }
 
-export default function ChatPanel({ 
-  permissionMode = 'normal', 
+// ============================================================
+// AI 社会 6 个流式子组件（设计文档：UI/连接.md §4.3）
+// 全部只依赖 streamState 切片，无副作用
+// ============================================================
+
+// 1. WorkerOutputs - 并行副模型输出卡片
+function WorkerOutputsView({ outputs }: { outputs: Array<{ workerIdx: number; modelName: string; content: string; status: string }> }) {
+  if (outputs.length === 0) return null;
+  return (
+    <div className="border border-outline/30 rounded-lg overflow-hidden bg-bg/30">
+      <div className="px-2.5 py-1.5 bg-surface border-b border-outline/20 flex items-center gap-2 text-[10.5px] text-on-surface/80 font-bold">
+        <Workflow className="w-3 h-3" /> 副模型并行输出（{outputs.length}）
+      </div>
+      <div className="grid grid-cols-1 gap-1.5 p-2">
+        {outputs.map(w => (
+          <div key={w.workerIdx} className="bg-surface/40 border border-outline/20 rounded-md p-2 text-[11px]">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-on-surface/90">#{w.workerIdx} {w.modelName}</span>
+              <span className={
+                w.status === 'done' ? 'text-emerald-400' :
+                w.status === 'error' ? 'text-rose-400' :
+                w.status === 'streaming' ? 'text-amber-400 animate-pulse' :
+                'text-on-surface/40'
+              }>
+                {w.status === 'done' ? '✓ 完成' :
+                 w.status === 'error' ? '✗ 失败' :
+                 w.status === 'streaming' ? '... 生成中' :
+                 '○ 等待'}
+              </span>
+            </div>
+            {w.content && (
+              <div className="text-on-surface/70 max-h-24 overflow-y-auto whitespace-pre-wrap text-[10.5px] leading-snug">
+                {w.content.length > 300 ? w.content.slice(0, 300) + '...' : w.content}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 2. ScoresView - Scorer 打分表
+function ScoresView({ scores }: { scores: Array<{ workerIdx: number; score: number; reason: string; modelName?: string }> }) {
+  if (scores.length === 0) return null;
+  return (
+    <div className="border border-outline/30 rounded-lg overflow-hidden bg-bg/30">
+      <div className="px-2.5 py-1.5 bg-surface border-b border-outline/20 flex items-center gap-2 text-[10.5px] text-on-surface/80 font-bold">
+        <Gauge className="w-3 h-3" /> Scorer 打分
+      </div>
+      <div className="p-2 space-y-1 text-[11px]">
+        {scores.map(s => (
+          <div key={s.workerIdx} className="flex items-start gap-2">
+            <span className="font-mono text-on-surface/60 shrink-0">#{s.workerIdx}</span>
+            <span className={
+              s.score >= 80 ? 'text-emerald-400 font-bold' :
+              s.score >= 60 ? 'text-amber-400 font-bold' :
+              'text-rose-400 font-bold'
+            }>{s.score}分</span>
+            <span className="text-on-surface/70 flex-1">{s.reason}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 3. JudgeView - 选定结果
+function JudgeView({ chosen, reasoning }: { chosen: number[]; reasoning: string }) {
+  if (chosen.length === 0) return null;
+  return (
+    <div className="border border-outline/30 rounded-lg overflow-hidden bg-bg/30">
+      <div className="px-2.5 py-1.5 bg-surface border-b border-outline/20 flex items-center gap-2 text-[10.5px] text-on-surface/80 font-bold">
+        <BadgeCheck className="w-3 h-3" /> Judge 选定
+      </div>
+      <div className="p-2 text-[11px] text-on-surface/80">
+        <div className="mb-1">选中：<span className="font-mono text-emerald-400">[{chosen.join(', ')}]</span></div>
+        {reasoning && <div className="text-on-surface/60 italic">理由：{reasoning}</div>}
+      </div>
+    </div>
+  );
+}
+
+// 4. AuditView - 审计发现
+function AuditView({ findings }: { findings: Array<{ severity: string; target: string; suggestion: string }> }) {
+  if (findings.length === 0) return null;
+  const sevColor = (s: string) =>
+    s === 'critical' ? 'text-rose-400 border-rose-400/30' :
+    s === 'high' ? 'text-orange-400 border-orange-400/30' :
+    s === 'medium' ? 'text-amber-400 border-amber-400/30' :
+    'text-blue-400 border-blue-400/30';
+  return (
+    <div className="border border-outline/30 rounded-lg overflow-hidden bg-bg/30">
+      <div className="px-2.5 py-1.5 bg-surface border-b border-outline/20 flex items-center gap-2 text-[10.5px] text-on-surface/80 font-bold">
+        <ShieldCheck className="w-3 h-3" /> Auditor 审计（{findings.length} 项）
+      </div>
+      <div className="p-2 space-y-1.5 text-[11px]">
+        {findings.map((f, i) => (
+          <div key={i} className={`border-l-2 pl-2 ${sevColor(f.severity)}`}>
+            <div className="flex items-center gap-1.5 font-bold">
+              <span className="font-mono">[{f.severity.toUpperCase()}]</span>
+              <span>{f.target}</span>
+            </div>
+            <div className="text-on-surface/70">建议：{f.suggestion}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 5. FinalReplyView - 最终回答（流式）
+function FinalReplyView({ content, label }: { content: string; label: string }) {
+  if (!content) return null;
+  return (
+    <div className="border border-outline/30 rounded-lg overflow-hidden bg-bg/30">
+      <div className="px-2.5 py-1.5 bg-surface border-b border-outline/20 flex items-center gap-2 text-[10.5px] text-on-surface/80 font-bold">
+        <Rocket className="w-3 h-3" /> {label}
+      </div>
+      <div className="p-2.5 text-[11.5px] text-on-surface/90 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto scrollbar-thin">
+        {content}
+        <span className="inline-block w-1.5 h-3 bg-primary ml-0.5 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
+// 6. SuggestEnableView - 阶段 0 启发式建议
+function SuggestEnableView({ items, onAccept }: { items: Array<{ candidateName: string; expectedGain: number; reason: string }>; onAccept?: (name: string) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="border border-amber-400/30 rounded-lg overflow-hidden bg-amber-400/5">
+      <div className="px-2.5 py-1.5 bg-amber-400/10 border-b border-amber-400/20 flex items-center gap-2 text-[10.5px] text-amber-300 font-bold">
+        <Zap className="w-3 h-3" /> 💡 建议启用副模型
+      </div>
+      <div className="p-2 space-y-1.5 text-[11px]">
+        {items.map((s, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <div className="flex-1">
+              <div className="text-on-surface/90 font-bold">{s.candidateName}（预期增益 {(s.expectedGain * 100).toFixed(0)}%）</div>
+              <div className="text-on-surface/60">{s.reason}</div>
+            </div>
+            {onAccept && (
+              <button
+                onClick={() => onAccept(s.candidateName)}
+                className="px-2 py-0.5 text-[10px] bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 rounded border border-amber-400/30"
+              >
+                启用并重发
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function ChatPanel({
+  permissionMode = 'normal',
   setPermissionMode,
   primaryColorTargets,
   selectedChatId = '1',
@@ -417,7 +582,8 @@ export default function ChatPanel({
   secModels = [],
   mixedTasks = false,
   selectedFile = 'BlogSystem/src/App.vue',
-  editorContent = ''
+  editorContent = '',
+  modelProviderMap = {}
 }: ChatPanelProps) {
   // Load and cache all conversations keyed by chat ID
   // ==========================================
@@ -473,6 +639,33 @@ export default function ChatPanel({
   const [pendingAttachment, setPendingAttachment] = useState<{ fileName: string; text: string } | null>(null);
   const [isPendingAttachmentExpanded, setIsPendingAttachmentExpanded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // 最近一次发往 /api/ai/chat 的 body - 供「建议启用并重发」使用
+  const [lastReqBody, setLastReqBody] = useState<any>(null);
+
+  // ==========================================
+  // AI 社会流式状态（设计文档：UI/连接.md §4.2）
+  // 单一 assistant 消息包含多个动态区域：reply / score / judge / audit / deliver
+  // ==========================================
+  const [streamState, setStreamState] = useState<{
+    workerOutputs: Array<{ workerIdx: number; modelName: string; content: string; status: 'pending' | 'streaming' | 'done' | 'error' }>;
+    reply: string;
+    scores: Array<{ workerIdx: number; score: number; reason: string; modelName?: string }>;
+    judgeChosen: number[];
+    judgeReasoning: string;
+    auditFindings: Array<{ severity: string; target: string; suggestion: string }>;
+    deliver: string;
+    suggestEnables: Array<{ candidateName: string; expectedGain: number; reason: string }>;
+  }>({
+    workerOutputs: [],
+    reply: '',
+    scores: [],
+    judgeChosen: [],
+    judgeReasoning: '',
+    auditFindings: [],
+    deliver: '',
+    suggestEnables: []
+  });
 
   // Update lists and cache to localStorage
   useEffect(() => {
@@ -861,61 +1054,244 @@ export default function ChatPanel({
     setInputValue('');
     setPendingAttachment(null);
 
-    // Execute actual cloud API integration instead of simulated wait times
     setIsGenerating(true);
+    // 重置流式状态
+    setStreamState({
+      workerOutputs: [],
+      reply: '',
+      scores: [],
+      judgeChosen: [],
+      judgeReasoning: '',
+      auditFindings: [],
+      deliver: '',
+      suggestEnables: []
+    });
+
+    // ==========================================
+    // 构造请求体（设计文档：UI/连接.md §3.1 §4.1）
+    // - mainProvider / subProviders / candidateProviders 都从 modelProviderMap 拼出
+    // - subProvider 必须 BOTH enabledInSettings=true AND 在 secModels 列表里
+    // - candidateProvider 只传脱敏字段
+    // ==========================================
+    const mainEntry = modelProviderMap[mainModel];
+    if (!mainEntry || !mainEntry.apiKey) {
+      const assistantMsg: ChatMessage = {
+        sender: 'assistant',
+        content: `❌ **主模型未配置**：请在「设置 → 模型」中测试通过主模型「${mainModel}」后再试。`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        avatar: ''
+      };
+      setConversations((prev) => ({ ...prev, [activeChatId]: [...currentChatMsgs, assistantMsg] }));
+      setIsGenerating(false);
+      return;
+    }
+
+    // 副模型：必须是 secModels 列表里 + map 里存在 + enabledInSettings=true
+    const subModels = (secModels || []).map(s => s.id || s.name);
+    const subEntries = subModels
+      .map(name => modelProviderMap[name])
+      .filter((e): e is NonNullable<typeof e> => !!e && e.enabledInSettings && !!e.apiKey);
+
+    // 候选副模型：所有 enabledInSettings=true 但不在 secModels 里的
+    const candidateEntries = Object.values(modelProviderMap)
+      .filter(e => e.enabledInSettings && !!e.apiKey && !subModels.includes(e.model));
+
+    const reqBody = {
+      mode: permissionMode,
+      query: finalContent,
+      history: activeMessages.map(m => ({ sender: m.sender, content: m.content })),
+      fileContext: selectedFile ? { name: selectedFile, content: editorContent } : undefined,
+      mainProvider: {
+        baseUrl: mainEntry.baseUrl,
+        apiKey: mainEntry.apiKey,
+        model: mainEntry.model
+      },
+      subProviders: subEntries.map(e => ({ baseUrl: e.baseUrl, apiKey: e.apiKey, model: e.model })),
+      candidateProviders: candidateEntries.map(e => ({
+        displayName: e.model,
+        providerName: e.providerName,
+        modelName: e.model,
+        baseUrl: e.baseUrl
+        // 故意不传 apiKey
+      }))
+    };
+    setLastReqBody(reqBody);
 
     fetch('/api/ai/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        prompt: finalContent,
-        history: activeMessages.map(m => ({ sender: m.sender, content: m.content })),
-        activeFile: selectedFile ? { name: selectedFile, content: editorContent } : null,
-        mainModel,
-        secModels,
-        mixedTasks,
-        activeSettings
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reqBody)
     })
     .then(async (res) => {
-      if (!res.ok) {
-        throw new Error(`服务器响应错误: ${res.status}`);
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`服务器 ${res.status}: ${text.slice(0, 200)}`);
       }
-      return res.json();
+      return streamSse(res.body, (evt) => handlePhase(evt, currentChatMsgs));
     })
-    .then((data) => {
-      if (data.success && data.reply) {
-        const assistantMsg: ChatMessage = {
-          sender: 'assistant',
-          content: data.reply,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          avatar: '',
-        };
-        setConversations((prev) => ({
-          ...prev,
-          [activeChatId]: [...currentChatMsgs, assistantMsg],
-        }));
-      } else {
-        throw new Error(data.error || 'AI 对话助手已禁用');
-      }
+    .then(() => {
+      // streamSse 内部已写入 assistant 消息
     })
     .catch((err) => {
-      console.error(err);
+      console.error('[handleSend]', err);
       const assistantMsg: ChatMessage = {
         sender: 'assistant',
-        content: `❌ **AI 助手已禁用**：${err.name === 'TypeError' ? '无法连接到服务端。请检查服务端状态及网络联通性。' : err.message}\n\n*(提示：AI 助手模块已从本项目移除。若发生报错，请使用其他代码生成工具)*`,
+        content: `❌ **调用失败**：${err?.message || err}\n\n请检查：\n1. 主/副模型是否在「设置 → 模型」中测试通过\n2. 后端服务（端口 3001）是否运行\n3. 浏览器控制台日志`,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        avatar: '',
+        avatar: ''
       };
-      setConversations((prev) => ({
-        ...prev,
-        [activeChatId]: [...currentChatMsgs, assistantMsg],
-      }));
+      setConversations((prev) => ({ ...prev, [activeChatId]: [...currentChatMsgs, assistantMsg] }));
     })
     .finally(() => {
       setIsGenerating(false);
+    });
+  };
+
+  // ==========================================
+  // 阶段 0 建议启用 - 用户点"启用并重发"后回调
+  // 把 lastReqBody 里 subProviders 加上该 candidate，并附 enableDecision
+  // ==========================================
+  const handleAcceptEnable = (candidateName: string) => {
+    if (!lastReqBody) return;
+    const entry = modelProviderMap[candidateName];
+    if (!entry || !entry.apiKey) return;
+    // 把 candidate 提升为 sub
+    const newSub = { baseUrl: entry.baseUrl, apiKey: entry.apiKey, model: entry.model };
+    const newReqBody = {
+      ...lastReqBody,
+      subProviders: [...(lastReqBody.subProviders as any[]), newSub],
+      candidateProviders: (lastReqBody.candidateProviders as any[]).filter((c: any) => c.modelName !== candidateName),
+      enableDecision: { candidateName: candidateName, accept: true }
+    };
+    setStreamState({ workerOutputs: [], reply: '', scores: [], judgeChosen: [], judgeReasoning: '', auditFindings: [], deliver: '', suggestEnables: [] });
+    setIsGenerating(true);
+    fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newReqBody)
+    })
+    .then(res => res.ok && res.body ? streamSse(res.body, (evt) => handlePhase(evt, activeMessages)) : Promise.reject(res.status))
+    .catch(err => console.error('[handleAcceptEnable]', err))
+    .finally(() => setIsGenerating(false));
+  };
+
+  // ==========================================
+  // SSE 流式解析 - 把后端 phase 事件投影到 streamState + 最终消息
+  // ==========================================
+  const streamSse = (body: ReadableStream<Uint8Array>, onEvent: (evt: any) => void): Promise<void> => {
+    const reader = body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    return (async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === '[DONE]') continue;
+          try {
+            const evt = JSON.parse(payload);
+            onEvent(evt);
+          } catch { /* 忽略非 JSON 行 */ }
+        }
+      }
+    })();
+  };
+
+  // ==========================================
+  // handlePhase - 处理单个 SSE 事件，更新流式状态 / 提交 assistant 消息
+  // ==========================================
+  const handlePhase = (evt: any, currentChatMsgs: ChatMessage[]) => {
+    // 先更新 streamState（驱动 UI 子组件）
+    setStreamState((prev) => {
+      const next = { ...prev };
+      switch (evt.phase) {
+        case 'phase0_skip':
+          // 静默
+          break;
+        case 'suggest_enable':
+          next.suggestEnables = [...prev.suggestEnables, {
+            candidateName: evt.candidateName,
+            expectedGain: evt.expectedGain,
+            reason: evt.reason ?? ''
+          }];
+          break;
+        case 'dispatch':
+          // 初始化 worker 列表
+          next.workerOutputs = (evt.subtasks as string[]).map((m, i) => ({
+            workerIdx: i, modelName: m, content: '', status: 'pending'
+          }));
+          break;
+        case 'worker_start':
+          next.workerOutputs = prev.workerOutputs.map(w =>
+            w.workerIdx === evt.workerIdx ? { ...w, status: 'streaming' } : w
+          );
+          break;
+        case 'worker_done':
+          next.workerOutputs = prev.workerOutputs.map(w =>
+            w.workerIdx === evt.workerIdx
+              ? { ...w, status: evt.content?.startsWith('⚠️') ? 'error' : 'done', content: evt.content ?? '' }
+              : w
+          );
+          break;
+        case 'reply':
+          next.reply = prev.reply + (evt.delta ?? '');
+          break;
+        case 'audit_stream':
+          // 专家模式：审计流式
+          next.reply = prev.reply + (evt.delta ?? '');
+          break;
+        case 'score':
+          next.scores = evt.scores ?? [];
+          break;
+        case 'judge':
+          next.judgeChosen = evt.chosen ?? [];
+          next.judgeReasoning = evt.reasoning ?? '';
+          break;
+        case 'audit':
+          next.auditFindings = evt.findings ?? [];
+          break;
+        case 'deliver':
+          next.deliver = prev.deliver + (evt.delta ?? '');
+          break;
+        case 'warn':
+          console.warn('[orchestrator warn]', evt.msg);
+          break;
+        case 'done': {
+          // 提交最终 assistant 消息（覆盖中间流）
+          const finalReply = evt.reply ?? prev.deliver ?? prev.reply;
+          const findings = evt.audit ?? prev.auditFindings;
+          let content = finalReply;
+          if (findings && findings.length > 0) {
+            content += '\n\n---\n\n## ⚠️ 审计提示\n\n' +
+              findings.map((f: any) => `- **[${f.severity?.toUpperCase()}]** ${f.target}\n  建议：${f.suggestion}`).join('\n');
+          }
+          if (next.suggestEnables.length > 0) {
+            content += '\n\n---\n\n## 💡 建议启用\n\n' +
+              next.suggestEnables.map(s => `- **${s.candidateName}**（预期增益 ${(s.expectedGain * 100).toFixed(0)}%）：${s.reason}`).join('\n');
+          }
+          const assistantMsg: ChatMessage = {
+            sender: 'assistant',
+            content,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            avatar: ''
+          };
+          setConversations((p) => ({ ...p, [activeChatId]: [...currentChatMsgs, assistantMsg] }));
+          break;
+        }
+        case 'error':
+          console.error('[orchestrator error]', evt.msg);
+          break;
+        default:
+          // 未知 phase - 不处理
+          break;
+      }
+      return next;
     });
   };
 
@@ -1004,37 +1380,45 @@ export default function ChatPanel({
           })}
 
           {isGenerating && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-col gap-2.5 text-left"
             >
-              {/* Header Row: Avatar + Loading info (Center-aligned) */}
+              {/* Header Row: Avatar + Loading info */}
               <div className="flex gap-3.5 items-center mb-1">
-                {/* Avatar block with overlapping spinner */}
                 <div className="relative w-11 h-11 rounded-full bg-on-surface/5 border border-on-surface/10 flex items-center justify-center shrink-0">
                   <ModelIcon modelName={mainModel || 'GPT-4o'} size={32} className="shrink-0 opacity-40 animate-pulse" />
                   <Loader2 className="absolute inset-0 w-full h-full text-primary/80 animate-spin p-2" />
                 </div>
-
-                {/* Info block (Username/Model + Loading status) */}
                 <div className="flex items-center gap-2 animate-pulse font-sans">
                   <span className="text-[11px] font-bold text-[#3b82f6]">
-                    {mainModel} 智脑中枢正在计算中...
+                    {mainModel} · {permissionMode === 'normal' ? '安全模式' :
+                                   permissionMode === 'performance' ? '性能模式' :
+                                   permissionMode === 'expert' ? '专家模式' : '极致模式'} 进行中
                   </span>
-                  <span className="text-[9px] text-on-surface/30 font-mono">排队分析中</span>
+                  <span className="text-[9px] text-on-surface/30 font-mono">流式输出</span>
                 </div>
               </div>
 
-              {/* Loading bubble: Indented */}
-              <div className="flex flex-col gap-1 max-w-[90%] font-sans pl-[58px] text-left">
-                <div className="bg-surface/30 border border-outline/20 px-3.5 py-2.5 rounded-xl text-on-surface/70 text-[12px] leading-relaxed select-none w-fit">
-                  <div className="flex items-center gap-1.5 py-0.5">
-                    <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce [animation-delay:-0.3s]" />
-                    <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce [animation-delay:-0.15s]" />
-                    <span className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce" />
-                  </div>
-                </div>
+              {/* 流式面板：6 个子组件按出现顺序堆叠 */}
+              <div className="flex flex-col gap-2 max-w-[95%] font-sans pl-[58px] text-left">
+                <SuggestEnableView items={streamState.suggestEnables} onAccept={handleAcceptEnable} />
+                <WorkerOutputsView outputs={streamState.workerOutputs} />
+                {permissionMode === 'ultimate' && <ScoresView scores={streamState.scores} />}
+                {permissionMode === 'ultimate' && <JudgeView chosen={streamState.judgeChosen} reasoning={streamState.judgeReasoning} />}
+                {streamState.reply && permissionMode !== 'ultimate' && (
+                  <FinalReplyView
+                    content={streamState.reply}
+                    label={permissionMode === 'expert' ? '主模型汇总 + 三段式审计' : '主模型汇总'}
+                  />
+                )}
+                {permissionMode === 'ultimate' && streamState.deliver && (
+                  <FinalReplyView content={streamState.deliver} label="Deliverer 整合交付" />
+                )}
+                {streamState.auditFindings.length > 0 && (
+                  <AuditView findings={streamState.auditFindings} />
+                )}
               </div>
             </motion.div>
           )}

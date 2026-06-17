@@ -324,14 +324,17 @@ export default function SettingsModal({
     return baseProviders;
   });
 
+  // 设计文档：UI/连接.md §2.2 - 加密时机改为「测试通过后才加密」
+  // 此处仅做明文写盘（兼容旧数据：若 apiKey 已是 enc:v1: 前缀则保留）
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const persisted = await Promise.all(providers.map(async (p) => {
+      // 保留旧 enc:v1: 加密的 entry（迁移兼容）；新输入的明文照写
+      const persisted = providers.map((p) => {
         if (!p.apiKey) return p;
-        const enc = await encryptSecret(p.apiKey);
-        return { ...p, apiKey: enc };
-      }));
+        if (p.apiKey.startsWith('enc:v1:')) return p;
+        return p;  // 明文写盘
+      });
       if (cancelled) return;
       localStorage.setItem('cherry_providers_v2', JSON.stringify(persisted));
       window.dispatchEvent(new CustomEvent('providers_updated'));
@@ -360,6 +363,59 @@ export default function SettingsModal({
     // 仅在初始挂载时跑一次（避免每次 providers 变更都解密）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 设计文档：UI/连接.md §2.3 - 测试通过后重建 cherry_model_provider_map_v1
+  // 作用：把"该 provider 下所有 enabled 模型"展开成 model→entry 的扁平表，供 ChatPanel 取用
+  // 触发：testProviderConnection 成功时调用 + providers 自身 useEffect 兜底重建
+  const rebuildModelProviderMap = async (changedProviderId?: string, overrideEncKey?: string) => {
+    try {
+      // 先读旧 map（避免一次性把全表清空；只更新变更的 provider）
+      const raw = localStorage.getItem('cherry_model_provider_map_v1');
+      const oldMap: Record<string, any> = raw ? JSON.parse(raw) : {};
+
+      // 把所有 provider 的模型（enabled=true 且有 apiKey）写入新 map
+      // 1) 拿当前最新的 providers（不依赖闭包里的旧值）
+      const latestRaw = localStorage.getItem('cherry_providers_v2');
+      const latest: ModelProvider[] = latestRaw ? JSON.parse(latestRaw) : providers;
+
+      const newMap: Record<string, any> = { ...oldMap };
+      // 先清掉本次变更 provider 的旧 key（避免旧模型残留）
+      if (changedProviderId) {
+        for (const k of Object.keys(newMap)) {
+          if (newMap[k].providerId === changedProviderId) delete newMap[k];
+        }
+      }
+
+      for (const p of latest) {
+        const encKey = (p.id === changedProviderId && overrideEncKey) ? overrideEncKey : p.apiKey;
+        if (!encKey) continue;  // 没填 key 的 provider 跳过
+        // 收集 enabled 模型（models[] 里 enabled=true 的 + customModels 全部算启用）
+        const enabledModels: string[] = [];
+        for (const m of p.models) if (m.enabled) enabledModels.push(m.id);
+        for (const cm of p.customModels) enabledModels.push(cm);
+        for (const m of enabledModels) {
+          newMap[m] = {
+            providerId: p.id,
+            providerName: p.name,
+            baseUrl: p.baseUrl || p.defaultUrl,
+            apiKey: encKey,
+            model: m,
+            enabledInSettings: p.enabled
+          };
+        }
+      }
+      localStorage.setItem('cherry_model_provider_map_v1', JSON.stringify(newMap));
+      window.dispatchEvent(new CustomEvent('model_provider_map_updated'));
+    } catch (e) {
+      console.error('[rebuildModelProviderMap] failed', e);
+    }
+  };
+
+  // 兜底：providers 每次变化后都重建 map（性能可接受，因为只有「模型启用/新增 custom」会触发）
+  useEffect(() => {
+    rebuildModelProviderMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers]);
 
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{
@@ -552,12 +608,19 @@ export default function SettingsModal({
       });
       const data = await r.json();
       if (data?.success) {
+        // 设计文档：UI/连接.md §2.2 - 测试通过后才加密 apiKey
+        const encrypted = target.apiKey && !target.apiKey.startsWith('enc:v1:')
+          ? await encryptSecret(target.apiKey)
+          : target.apiKey;
         setProviders(prev => prev.map(p => p.id === providerId ? {
           ...p,
           status: 'success',
           delay: data.latency,
           errorMessage: undefined,
+          apiKey: encrypted,
         } : p));
+        // 重建 cherry_model_provider_map_v1（只含该 provider 已启用模型）
+        await rebuildModelProviderMap(providerId, encrypted);
       } else {
         setProviders(prev => prev.map(p => p.id === providerId ? {
           ...p,
