@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useTheme } from '../context/ThemeContext';
 import SimulatedViewport from './SimulatedViewport';
+import AndroidComposePreview from './AndroidComposePreview';
 
 interface PreviewPanelProps {
   width?: number;
@@ -103,7 +104,7 @@ const MOCK_SCREENSHOTS = [
 export default function PreviewPanel({ width = 385, isResizing = false, dragStartWidth = 385, selectedChatId }: PreviewPanelProps) {
   const { activeTheme } = useTheme();
   const [activeProjectTag, setActiveProjectTag] = useState<string>('VUE');
-  const [previewMode, setPreviewMode] = useState<'web' | 'mobilegym'>('web');
+  const [previewMode, setPreviewMode] = useState<'web' | 'mobilegym' | 'compose'>('web');
   const [selectedDevice, setSelectedDevice] = useState('pixel8');
   const [phoneWidth, setPhoneWidth] = useState(280);
   const [phoneHeight, setPhoneHeight] = useState(500);
@@ -112,6 +113,16 @@ export default function PreviewPanel({ width = 385, isResizing = false, dragStar
   const [activeStep, setActiveStep] = useState(1);
   const [currentScreenshotIndex, setCurrentScreenshotIndex] = useState(0);
   const [rewardHistory, setRewardHistory] = useState<number[]>([0.0, 0.1, 0.25, -0.05, 0.4, 0.12, 1.0]);
+  const [composeFilePath, setComposeFilePath] = useState<string>('');
+  const [composeFunc, setComposeFunc] = useState<string>('MainScreen');
+  // 预填示例文件，便于用户切到 Compose tab 即看效果
+  useEffect(() => {
+    if (!composeFilePath && typeof window !== 'undefined') {
+      // 用户可在 UI 里改
+      setComposeFilePath('');
+    }
+  }, [composeFilePath]);
+  const [composeTick, setComposeTick] = useState<number>(0);
   const [activeActionMsg, setActiveActionMsg] = useState('Searching Shopping item: apples');
   const [logs, setLogs] = useState<string[]>([
     '[GymInit] Connecting to MobileGym AVD daemon...',
@@ -421,16 +432,35 @@ export default function PreviewPanel({ width = 385, isResizing = false, dragStar
                   }}
                   disabled={activeProjectTag !== 'ANDROID'}
                   className={`px-2 py-0.5 rounded text-[10px] font-sans font-medium transition-all ${
-                    activeProjectTag !== 'ANDROID' 
+                    activeProjectTag !== 'ANDROID'
                       ? 'opacity-35 cursor-not-allowed text-on-surface/30'
-                      : previewMode === 'mobilegym' 
-                      ? 'bg-primary/20 text-primary border border-primary/30 font-bold cursor-pointer' 
+                      : previewMode === 'mobilegym'
+                      ? 'bg-primary/20 text-primary border border-primary/30 font-bold cursor-pointer'
                       : 'text-on-surface/40 hover:text-on-surface cursor-pointer'
                   }`}
                   title={activeProjectTag !== 'ANDROID' ? "安卓虚拟环境只能在安卓对话中绑定与使用" : "切换至安卓虚拟机镜像"}
                   translate="no"
                 >
                   Android
+                </button>
+                <button
+                  onClick={() => {
+                    if (activeProjectTag === 'ANDROID') {
+                      setPreviewMode('compose');
+                    }
+                  }}
+                  disabled={activeProjectTag !== 'ANDROID'}
+                  className={`px-2 py-0.5 rounded text-[10px] font-sans font-medium transition-all ${
+                    activeProjectTag !== 'ANDROID'
+                      ? 'opacity-35 cursor-not-allowed text-on-surface/30'
+                      : previewMode === 'compose'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold cursor-pointer'
+                      : 'text-on-surface/40 hover:text-on-surface cursor-pointer'
+                  }`}
+                  title={activeProjectTag !== 'ANDROID' ? "解释型预览只能在安卓对话中使用" : "解释型 Compose/ArkTS 预览（无模拟器）"}
+                  translate="no"
+                >
+                  Compose
                 </button>
               </div>
             )}
@@ -773,6 +803,80 @@ export default function PreviewPanel({ width = 385, isResizing = false, dragStar
               <div className="text-on-surface/40 text-[8.5px] text-right">
                 <span>Task: Instacart Shopping PPO</span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------------------------------- */}
+        {/* MODE C: COMPOSE/ARKTS 解释型预览（无模拟器） */}
+        {/* ---------------------------------------------------- */}
+        {previewMode === 'compose' && (
+          <div
+            style={{ backgroundColor: activeTheme.bg }}
+            className="flex-grow flex flex-col overflow-hidden text-on-surface"
+          >
+            {/* 文件选择/状态栏 */}
+            <div
+              style={{ backgroundColor: activeTheme.surface, borderColor: activeTheme.outline }}
+              className="p-2 border-b flex items-center justify-between gap-1.5 shrink-0"
+            >
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <input
+                  type="text"
+                  value={composeFilePath}
+                  onChange={(e) => setComposeFilePath(e.target.value)}
+                  placeholder="C:\\path\\to\\MainScreen.kt"
+                  className="flex-1 min-w-0 px-2 py-1 text-[10px] font-mono bg-bg border border-outline rounded text-on-surface focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <select
+                  value={composeFunc}
+                  onChange={(e) => setComposeFunc(e.target.value)}
+                  className="px-1.5 py-1 text-[10px] font-mono bg-bg border border-outline rounded text-on-surface"
+                  title="入口 Composable 函数名"
+                >
+                  <option value="MainScreen">MainScreen</option>
+                  <option value="MainPage">MainPage</option>
+                  <option value="App">App</option>
+                </select>
+                <button
+                  onClick={() => setComposeTick((t) => t + 1)}
+                  className="text-[9px] font-mono font-bold bg-primary/15 hover:bg-primary/25 text-primary px-2 py-1 rounded border border-primary/20 transition-all active:scale-95"
+                  title="手动刷新（默认 1.5s 自动轮询）"
+                >
+                  刷新
+                </button>
+              </div>
+            </div>
+
+            {/* 渲染区 */}
+            <div className="flex-1 flex items-center justify-center p-4 overflow-auto bg-gradient-to-br from-slate-900 to-slate-800">
+              {composeFilePath.trim() ? (
+                <AndroidComposePreview
+                  key={`${composeFilePath}::${composeFunc}::${composeTick}`}
+                  filePath={composeFilePath.trim()}
+                  funcName={composeFunc}
+                  width={Math.min(phoneWidth, 320)}
+                  height={Math.min(phoneHeight, 580)}
+                />
+              ) : (
+                <div className="text-on-surface/40 text-[11px] text-center max-w-[260px]">
+                  <div className="font-semibold mb-1">解释型 Compose/ArkTS 预览</div>
+                  <div className="leading-relaxed">
+                    在上方输入 <span className="font-mono text-primary">.kt</span> 或 <span className="font-mono text-primary">.ets</span> 文件绝对路径，无需启动 AVD。
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 底部说明 */}
+            <div
+              style={{ backgroundColor: activeTheme.surface, borderColor: activeTheme.outline }}
+              className="p-1.5 border-t text-[8.5px] font-mono text-on-surface/40 shrink-0"
+            >
+              <span className="text-primary/80">[解释型预览]</span> 解析源码 → AST → React 渲染。无真实模拟器，状态变量仅显示初值。
             </div>
           </div>
         )}
