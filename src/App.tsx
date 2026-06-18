@@ -19,20 +19,6 @@ import { mockFileContents } from './data/mockFiles';
 import { SecondaryModel } from './types';
 import { useTheme, THEME_PRESETS } from './context/ThemeContext';
 import { X } from 'lucide-react';
-import { decryptSecret } from './data/secrets';
-
-// ============================================================
-// Provider 桥接层（设计文档：UI/连接.md §2.3 §4.1）
-// ============================================================
-type ModelProviderEntry = {
-  providerId: string;
-  providerName: string;
-  baseUrl: string;
-  apiKey: string;            // 来自 localStorage（可能已加密也可能明文）
-  model: string;
-  enabledInSettings: boolean;
-};
-type ModelProviderMap = Record<string, ModelProviderEntry>;
 
 export default function App() {
   // Model Settings State
@@ -43,61 +29,6 @@ export default function App() {
   ]);
   const [mixedTasks, setMixedTasks] = useState(true);
   const [currentPermissionMode, setCurrentPermissionMode] = useState<'normal' | 'performance' | 'ultimate' | 'expert'>('normal');
-
-  // Provider 桥接层 - 装载 cherry_model_provider_map_v1
-  const [modelProviderMap, setModelProviderMap] = useState<ModelProviderMap>({});
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const raw = localStorage.getItem('cherry_model_provider_map_v1');
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as ModelProviderMap;
-        // 解密所有 apiKey（兼容旧的 enc:v1: 格式）
-        const decrypted = await Promise.all(
-          Object.entries(parsed).map(async ([name, entry]) => {
-            if (entry.apiKey && entry.apiKey.startsWith('enc:v1:')) {
-              try {
-                return [name, { ...entry, apiKey: await decryptSecret(entry.apiKey) }];
-              } catch { return [name, entry]; }
-            }
-            return [name, entry];
-          })
-        );
-        if (cancelled) return;
-        setModelProviderMap(Object.fromEntries(decrypted) as ModelProviderMap);
-      } catch (e) {
-        console.error('Failed to load modelProviderMap', e);
-      }
-    })();
-
-    const handler = () => {
-      // 重新走加载逻辑
-      (async () => {
-        try {
-          const raw = localStorage.getItem('cherry_model_provider_map_v1');
-          if (!raw) return;
-          const parsed = JSON.parse(raw) as ModelProviderMap;
-          const decrypted = await Promise.all(
-            Object.entries(parsed).map(async ([name, entry]) => {
-              if (entry.apiKey && entry.apiKey.startsWith('enc:v1:')) {
-                try {
-                  return [name, { ...entry, apiKey: await decryptSecret(entry.apiKey) }];
-                } catch { return [name, entry]; }
-              }
-              return [name, entry];
-            })
-          );
-          setModelProviderMap(Object.fromEntries(decrypted) as ModelProviderMap);
-        } catch {}
-      })();
-    };
-    window.addEventListener('model_provider_map_updated', handler);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('model_provider_map_updated', handler);
-    };
-  }, []);
 
   // Synchronize multi-model mixedTasks based on the active mode (only 'normal' mode needs it disabled)
   useEffect(() => {
@@ -173,7 +104,9 @@ export default function App() {
     setPrimaryColor,
     setPrimaryColorTargets,
     setCurrentThemeId,
-    syncTheme
+    syncTheme,
+    addCustomFont,
+    setSelectedFont
   } = useTheme();
 
   // Unique stable state tracking references to avoid stale closures and infinite loop triggers
@@ -333,6 +266,28 @@ export default function App() {
   // Broadcast file switching
   const handleFileChange = (file: string) => {
     setSelectedFile(file);
+    
+    // Check if the switched file is a local font resource Clicked from File Explorer
+    const isFont = file.toLowerCase().endsWith('.ttf') || 
+                   file.toLowerCase().endsWith('.otf') || 
+                   file.toLowerCase().endsWith('.woff') || 
+                   file.toLowerCase().endsWith('.woff2');
+                   
+    if (isFont) {
+      const filename = file.substring(file.lastIndexOf('/') + 1);
+      const fontNameDisplay = filename.replace(/\.[^/.]+$/, "") + " (Local)";
+      const rawContent = fileCacheRef.current[file] || mockFileContents[file] || '';
+      
+      // Seed base64 / dataUrl if not already a data uri
+      const fontUrl = rawContent.startsWith('data:') 
+        ? rawContent 
+        : `data:font/woff2;base64,${btoa(rawContent || 'mock-binary-font-package-data')}`;
+      
+      addCustomFont(fontNameDisplay, fontUrl);
+      setSelectedFont(fontNameDisplay);
+      setToastMsg(`已自动从资源管理器加载本地字体「${fontNameDisplay}」并设为激活！`);
+    }
+
     const content = fileCacheRef.current[file] !== undefined ? fileCacheRef.current[file] : (mockFileContents[file] || '');
     if (typeof window !== 'undefined') {
       try {
@@ -467,6 +422,11 @@ export default function App() {
               msg.color || primaryColorRef.current,
               msg.targets || primaryColorTargetsRef.current
             );
+          }
+        } else if (msg.type === 'JUMP_TO_EXPLORER') {
+          setActiveTab('explorer');
+          if (msg.toast) {
+            setToastMsg(msg.toast);
           }
         }
       };
@@ -712,9 +672,9 @@ export default function App() {
 
         {/* Column 4: Main Chat Workspace Output Pane + Terminal Logs */}
         <div style={{ '--color-primary': primaryColorTargets.chatPanel ? 'var(--color-main-primary)' : '#8c8c8c' } as React.CSSProperties} className="flex-1 h-full min-w-0">
-          <ChatPanel
-            permissionMode={currentPermissionMode}
-            setPermissionMode={setCurrentPermissionMode}
+          <ChatPanel 
+            permissionMode={currentPermissionMode} 
+            setPermissionMode={setCurrentPermissionMode} 
             primaryColorTargets={primaryColorTargets}
             selectedChatId={selectedChatId}
             mainModel={mainModel}
@@ -722,7 +682,6 @@ export default function App() {
             mixedTasks={mixedTasks}
             selectedFile={selectedFile}
             editorContent={editorContent}
-            modelProviderMap={modelProviderMap}
           />
         </div>
 
@@ -776,6 +735,7 @@ export default function App() {
         {showSettingsModal && (
           <SettingsModal 
             onClose={() => setShowSettingsModal(false)}
+            permissionMode={currentPermissionMode}
           />
         )}
       </AnimatePresence>

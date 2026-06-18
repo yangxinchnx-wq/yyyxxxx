@@ -4,11 +4,13 @@ import {
   ShieldCheck, Brain, Download, Navigation, Database, Share2, Save,
   Check, AlertCircle, Play, Pause, Trash2, Edit2, 
   Search, RefreshCw, Layers, Plus, Terminal, Heart, Eye, EyeOff, DownloadCloud, FileText, Link2, Key, Radio, ShieldAlert, Settings,
-  Mic, Wrench, Film
+  Mic, Wrench, Film, Type, Compass, Sliders, Flame
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ModelIcon } from './ModelIcon';
+import { NormalIcon, PerformanceIcon, ExpertIcon, UltimateIcon } from './ChatPanel';
 import { encryptSecret, decryptSecret } from '../data/secrets';
+import { useTheme, PRESET_FONTS } from '../context/ThemeContext';
 
 const PROVIDER_MODEL_REGISTRY: Record<string, { id: string; name: string }[]> = {
   xiaomi: [
@@ -52,6 +54,7 @@ const PROVIDER_MODEL_REGISTRY: Record<string, { id: string; name: string }[]> = 
 interface SettingsModalProps {
   onClose: () => void;
   initialTabId?: string;
+  permissionMode?: 'normal' | 'performance' | 'ultimate' | 'expert';
 }
 
 interface TabItem {
@@ -63,8 +66,23 @@ interface TabItem {
 
 export default function SettingsModal({ 
   onClose,
-  initialTabId = 'language'
+  initialTabId = 'language',
+  permissionMode = 'normal'
 }: SettingsModalProps) {
+  const getRuleTabIcon = () => {
+    switch (permissionMode) {
+      case 'performance':
+        return PerformanceIcon;
+      case 'expert':
+        return ExpertIcon;
+      case 'ultimate':
+        return UltimateIcon;
+      case 'normal':
+      default:
+        return NormalIcon;
+    }
+  };
+
   // 11 Geek System Settings on Left (with removed and remaining numbered 01 to 11)
   const [tabs, setTabs] = useState<TabItem[]>([
     { id: 'language', label: '01. 界面语言', icon: Globe, dir: '01_language' },
@@ -73,18 +91,37 @@ export default function SettingsModal({
     { id: 'mcp', label: '04. MCP 工具', icon: Cpu, dir: '04_mcp' },
     { id: 'environment', label: '05. 运行环境', icon: Code2, dir: '05_environment' },
     { id: 'skills-rules', label: '06. 智能规则', icon: ShieldCheck, dir: '07_skills-rules' },
-    { id: 'memory', label: '07. 记忆体设置', icon: Brain, dir: '08_memory' },
+    { id: 'memory', label: '07. 记忆体设置', icon: Layers, dir: '08_memory' },
     { id: 'proxy', label: '08. 网络代理', icon: Navigation, dir: '10_proxy' },
-    { id: 'knowledge-base', label: '09. 自建知识库', icon: Database, dir: '11_knowledge-base' },
+    { id: 'knowledge-base', label: '09. 知识库', icon: Database, dir: '11_knowledge-base' },
     { id: 'channels', label: '10. 消息连接', icon: Share2, dir: '12_channels' },
     { id: 'data-management', label: '11. 数据备份', icon: Save, dir: '13_data-management' }
   ]);
 
   const [activeTabId, setActiveTabId] = useState(initialTabId);
+  const [selectedLang, setSelectedLang] = useState(() => localStorage.getItem('soloforge_lang') || 'zh-CN');
+
+  const changeLanguage = (lang: string) => {
+    setSelectedLang(lang);
+    localStorage.setItem('soloforge_lang', lang);
+    try {
+      const channel = new BroadcastChannel('soloforge-editor-sync-channel');
+      channel.postMessage({
+        type: 'TOAST',
+        toast: lang === 'zh-CN' ? '🇨🇳 选中的显示语言已变更为: 简体中文 (已即时应用)' : '🇺🇸 Preferred language updated: English (US) (Instant load-out applied)'
+      });
+      channel.close();
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const { customFonts, selectedFont, addCustomFont, deleteCustomFont, setSelectedFont } = useTheme();
+  const fontInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // If the initial target tab was theme, default to language since theme has its own dedicated modal now!
-    if (initialTabId === 'theme') {
+    // If the initial target tab was theme or font, default to language
+    if (initialTabId === 'theme' || initialTabId === 'font-settings') {
       setActiveTabId('language');
     } else if (initialTabId) {
       setActiveTabId(initialTabId);
@@ -221,32 +258,6 @@ export default function SettingsModal({
         color: '#f43f5e'
       },
       {
-        id: 'minimax',
-        name: 'MiniMax',
-        desc: '海螺ABAB系列多模态语言模型与 MiniMax-M3 推理模型',
-        enabled: false,
-        apiKey: '',
-        baseUrl: 'https://api.minimax.io/v1',
-        defaultUrl: 'https://api.minimax.io/v1',
-        models: [],
-        customModels: [],
-        status: 'idle' as const,
-        color: '#f97316'
-      },
-      {
-        id: 'zhipu',
-        name: '智谱 AI ChatGLM',
-        desc: '智谱 GLM-4.5 / GLM-5 系列大语言与多模态模型',
-        enabled: false,
-        apiKey: '',
-        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-        defaultUrl: 'https://open.bigmodel.cn/api/paas/v4',
-        models: [],
-        customModels: [],
-        status: 'idle' as const,
-        color: '#3b82f6'
-      },
-      {
         id: 'custom',
         name: '自定义提供商',
         desc: '自定义/中转等兼容 OpenAI 接口标准的第三方服务商',
@@ -350,17 +361,14 @@ export default function SettingsModal({
     return baseProviders;
   });
 
-  // 设计文档：UI/连接.md §2.2 - 加密时机改为「测试通过后才加密」
-  // 此处仅做明文写盘（兼容旧数据：若 apiKey 已是 enc:v1: 前缀则保留）
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // 保留旧 enc:v1: 加密的 entry（迁移兼容）；新输入的明文照写
-      const persisted = providers.map((p) => {
+      const persisted = await Promise.all(providers.map(async (p) => {
         if (!p.apiKey) return p;
-        if (p.apiKey.startsWith('enc:v1:')) return p;
-        return p;  // 明文写盘
-      });
+        const enc = await encryptSecret(p.apiKey);
+        return { ...p, apiKey: enc };
+      }));
       if (cancelled) return;
       localStorage.setItem('cherry_providers_v2', JSON.stringify(persisted));
       window.dispatchEvent(new CustomEvent('providers_updated'));
@@ -389,59 +397,6 @@ export default function SettingsModal({
     // 仅在初始挂载时跑一次（避免每次 providers 变更都解密）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 设计文档：UI/连接.md §2.3 - 测试通过后重建 cherry_model_provider_map_v1
-  // 作用：把"该 provider 下所有 enabled 模型"展开成 model→entry 的扁平表，供 ChatPanel 取用
-  // 触发：testProviderConnection 成功时调用 + providers 自身 useEffect 兜底重建
-  const rebuildModelProviderMap = async (changedProviderId?: string, overrideEncKey?: string) => {
-    try {
-      // 先读旧 map（避免一次性把全表清空；只更新变更的 provider）
-      const raw = localStorage.getItem('cherry_model_provider_map_v1');
-      const oldMap: Record<string, any> = raw ? JSON.parse(raw) : {};
-
-      // 把所有 provider 的模型（enabled=true 且有 apiKey）写入新 map
-      // 1) 拿当前最新的 providers（不依赖闭包里的旧值）
-      const latestRaw = localStorage.getItem('cherry_providers_v2');
-      const latest: ModelProvider[] = latestRaw ? JSON.parse(latestRaw) : providers;
-
-      const newMap: Record<string, any> = { ...oldMap };
-      // 先清掉本次变更 provider 的旧 key（避免旧模型残留）
-      if (changedProviderId) {
-        for (const k of Object.keys(newMap)) {
-          if (newMap[k].providerId === changedProviderId) delete newMap[k];
-        }
-      }
-
-      for (const p of latest) {
-        const encKey = (p.id === changedProviderId && overrideEncKey) ? overrideEncKey : p.apiKey;
-        if (!encKey) continue;  // 没填 key 的 provider 跳过
-        // 收集 enabled 模型（models[] 里 enabled=true 的 + customModels 全部算启用）
-        const enabledModels: string[] = [];
-        for (const m of p.models) if (m.enabled) enabledModels.push(m.id);
-        for (const cm of p.customModels) enabledModels.push(cm);
-        for (const m of enabledModels) {
-          newMap[m] = {
-            providerId: p.id,
-            providerName: p.name,
-            baseUrl: p.baseUrl || p.defaultUrl,
-            apiKey: encKey,
-            model: m,
-            enabledInSettings: p.enabled
-          };
-        }
-      }
-      localStorage.setItem('cherry_model_provider_map_v1', JSON.stringify(newMap));
-      window.dispatchEvent(new CustomEvent('model_provider_map_updated'));
-    } catch (e) {
-      console.error('[rebuildModelProviderMap] failed', e);
-    }
-  };
-
-  // 兜底：providers 每次变化后都重建 map（性能可接受，因为只有「模型启用/新增 custom」会触发）
-  useEffect(() => {
-    rebuildModelProviderMap();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers]);
 
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<{
@@ -634,19 +589,12 @@ export default function SettingsModal({
       });
       const data = await r.json();
       if (data?.success) {
-        // 设计文档：UI/连接.md §2.2 - 测试通过后才加密 apiKey
-        const encrypted = target.apiKey && !target.apiKey.startsWith('enc:v1:')
-          ? await encryptSecret(target.apiKey)
-          : target.apiKey;
         setProviders(prev => prev.map(p => p.id === providerId ? {
           ...p,
           status: 'success',
           delay: data.latency,
           errorMessage: undefined,
-          apiKey: encrypted,
         } : p));
-        // 重建 cherry_model_provider_map_v1（只含该 provider 已启用模型）
-        await rebuildModelProviderMap(providerId, encrypted);
       } else {
         setProviders(prev => prev.map(p => p.id === providerId ? {
           ...p,
@@ -946,7 +894,7 @@ export default function SettingsModal({
         <div className="flex items-center justify-between p-4 px-6 border-b border-[var(--color-outline)]/20 bg-[var(--color-bg)] text-[var(--color-on-surface)]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center">
-              <Settings className="text-[var(--color-primary)] w-5 h-5 animate-pulse" />
+              <Settings className="text-[var(--color-primary)] w-5 h-5" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-[var(--color-on-surface)] tracking-wide">设置</h2>
@@ -1017,26 +965,173 @@ export default function SettingsModal({
               >
                 {/* 01. Language settings */}
                 {activeTabId === 'language' && (
-                  <div className="space-y-6 animate-fadeIn">
-                    <div className="border-b border-[#222426] pb-3 mb-2">
-                      <h3 className="text-base font-bold text-white">界面语言</h3>
-                      <p className="text-xs text-on-surface/50 mt-1">轻触按钮即可实时切换系统首选语言</p>
+                  <div className="space-y-6 animate-fadeIn text-left pb-6">
+                    <div className="border-b border-[var(--color-outline)]/20 pb-3 mb-2">
+                      <h3 className="text-base font-bold text-[var(--color-on-surface)]">界面语言与全局字体</h3>
+                      <p className="text-xs text-on-surface/50 mt-1">定制界面首选语言以及全局显示字体。支持一键导入并应用本地个性化字体。</p>
                     </div>
                     
-                    <div className="bg-[#121415] border border-[#222426] rounded-xl p-5 space-y-4">
-                      <span className="text-xs text-[#ffde82]/85 font-mono tracking-wider font-semibold uppercase block">语言偏好设置</span>
+                    <div className="bg-[var(--color-surface)] border border-[var(--color-outline)]/20 rounded-xl p-5 space-y-4">
+                      <span className="text-xs text-[var(--color-primary)] font-mono tracking-wider font-semibold uppercase block">语言偏好设置</span>
                       <div className="flex items-center justify-between">
                         <div>
-                          <span className="text-sm font-bold text-white">系统显示语言</span>
+                          <span className="text-sm font-bold text-[var(--color-on-surface)]">系统显示语言</span>
                           <p className="text-xs text-on-surface/50 mt-0.5">多国语言自动校准，默认为中文显示</p>
                         </div>
                         <div className="flex gap-2">
-                          <button className="bg-primary/20 border border-primary/40 text-primary hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-                            中文
+                          <button 
+                            onClick={() => changeLanguage('zh-CN')}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              selectedLang === 'zh-CN'
+                                ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/40 text-[var(--color-primary)] shadow-[0_0_12px_rgba(var(--color-primary-rgb),0.15)] font-extrabold'
+                                : 'bg-[var(--color-bg)] border border-[var(--color-outline)]/15 text-on-surface/50 hover:text-white hover:border-[var(--color-outline)]/35'
+                            }`}
+                          >
+                            简体中文 (ZH)
                           </button>
-                          <button className="bg-[#181a1c] border border-[#2a2d30] text-on-surface/50 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-                            英文
+                          <button 
+                            onClick={() => changeLanguage('en-US')}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              selectedLang === 'en-US'
+                                ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/40 text-[var(--color-primary)] shadow-[0_0_12px_rgba(var(--color-primary-rgb),0.15)] font-extrabold'
+                                : 'bg-[var(--color-bg)] border border-[var(--color-outline)]/15 text-on-surface/50 hover:text-white hover:border-[var(--color-outline)]/35'
+                            }`}
+                          >
+                            English (US)
                           </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Font settings nested inline */}
+                    <div className="bg-[var(--color-surface)] border border-[var(--color-outline)]/20 rounded-xl p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-[var(--color-primary)] font-mono tracking-wider font-semibold uppercase block">全局字体设置</span>
+                          <p className="text-xs text-on-surface/50 mt-0.5">轻触快速点击切换首选字体样式包，自动全站生效</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                        {[...PRESET_FONTS, ...customFonts].map((font, idx) => {
+                          const isActive = selectedFont === font.name;
+                          
+                          // Derive display CSS font family name
+                          let displayFontFamily = font.name;
+                          if (font.name === '系统默认 (System UI)') {
+                            displayFontFamily = 'system-ui, sans-serif';
+                          } else if (font.name === '默认 (Default)') {
+                            displayFontFamily = 'Inter, sans-serif';
+                          } else if (font.name.includes('(')) {
+                            const m = font.name.match(/\(([^)]+)\)/);
+                            if (m) displayFontFamily = m[1];
+                          }
+
+                          return (
+                            <div 
+                              key={idx}
+                              role="button"
+                              onClick={() => setSelectedFont(font.name)}
+                              className={`p-3.5 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
+                                isActive 
+                                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 shadow-[0_0_12px_rgba(var(--color-primary-rgb),0.25)]'
+                                  : 'border-[var(--color-outline)]/15 bg-[var(--color-bg)] hover:bg-[var(--color-surface-bright)]/30 hover:border-[var(--color-outline)]/35'
+                              }`}
+                              style={{ fontFamily: displayFontFamily }}
+                            >
+                              <div className="flex items-start justify-between min-w-0 gap-1.5">
+                                <span className="text-xs font-bold text-[var(--color-on-surface)] truncate">
+                                  {font.name.replace(/\s*\(Default\)|\s*\(System UI\)/, '')}
+                                </span>
+                                {isActive && (
+                                  <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-[var(--color-bg)] flex items-center justify-center shrink-0">
+                                    <Check className="w-2.5 h-2.5 font-extrabold stroke-[3.5]" />
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="mt-3 flex items-center justify-between">
+                                <span className="text-[9px] text-on-surface/40 font-mono tracking-wider leading-none">
+                                  {font.isPreset ? '系统预设' : '已导入'}
+                                </span>
+                                {!font.isPreset && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteCustomFont(font.name);
+                                    }}
+                                    className="p-1 text-on-surface/30 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                                    title="删除此字体"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* If selected font is custom, show clear delete button */}
+                        {!PRESET_FONTS.some(f => f.name === selectedFont) && (
+                          <div className="col-span-full mt-2 mb-2 flex justify-start">
+                            <button
+                              onClick={() => deleteCustomFont(selectedFont)}
+                              className="px-3 py-1.5 flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 text-red-100 hover:bg-red-500/15 hover:border-red-500/40 transition-colors text-xs cursor-pointer font-medium shrink-0"
+                              title="释放/删除当前选中的本地字体资源"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                              <span className="text-red-400">从缓存中移除选中本地字体资源: {selectedFont.replace(' (Local)', '')}</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Hidden dynamic local font loader input element */}
+                        <input 
+                          type="file"
+                          ref={fontInputRef}
+                          accept=".ttf,.otf,.woff,.woff2"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const result = event.target?.result as string;
+                              if (result) {
+                                // Extract readable display name without format extension
+                                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+                                // Create premium display name, e.g. "MyFont (Local)"
+                                const cleanName = `${nameWithoutExt} (Local)`;
+                                addCustomFont(cleanName, result);
+                                setSelectedFont(cleanName);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                          style={{ display: 'none' }}
+                        />
+
+                        {/* Plus Add action panel card */}
+                        <div 
+                          role="button"
+                          onClick={() => {
+                            onClose();
+                            try {
+                              const channel = new BroadcastChannel('soloforge-editor-sync-channel');
+                              channel.postMessage({
+                                type: 'JUMP_TO_EXPLORER',
+                                toast: '📂 已为您跳转至资源管理文件夹！在左侧文件树「assets/fonts」中点击任何 .ttf/.otf/.woff 字体文件，即可自动生成样式磁贴，全局快速点击切换！'
+                              });
+                              channel.close();
+                            } catch (e) {
+                              console.warn(e);
+                            }
+                          }}
+                          className="p-3.5 rounded-xl border border-dashed border-[var(--color-primary)]/40 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 text-center flex flex-col items-center justify-center cursor-pointer transition-all gap-1 text-[var(--color-primary)] group min-h-[72px]"
+                          title="从软件资源管理文件夹导入并应用新字体"
+                        >
+                          <Plus className="w-5 h-5 stroke-[2.5] group-hover:scale-110 transition-transform active:scale-95" />
+                          <span className="text-[10.5px] font-bold tracking-tight">导入本地字体</span>
                         </div>
                       </div>
                     </div>
@@ -1093,14 +1188,8 @@ export default function SettingsModal({
                               }`}
                             >
                               <div className="flex items-center gap-2.5 truncate">
-                                {(p.id === 'custom' || p.id.startsWith('custom_')) ? (
-                                  <span
-                                    className="shrink-0 inline-flex items-center justify-center rounded-md border border-dashed border-[var(--color-outline)]/30 bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-                                    style={{ width: 22, height: 22 }}
-                                    aria-label="Custom provider"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-                                  </span>
+                                {p.id === 'custom' ? (
+                                  <Plus className="w-5 h-5 shrink-0 opacity-65" style={{ width: 22, height: 22 }} />
                                 ) : (
                                   <ModelIcon modelName={p.id} size={22} className="shrink-0" />
                                 )}
@@ -1747,19 +1836,20 @@ export default function SettingsModal({
               </div>
             )}
 
-
-
             {/* 07. Skills & Rules manager */}
             {activeTabId === 'skills-rules' && (
               <div className="space-y-6 animate-fadeIn">
                 <div className="border-b border-[var(--color-outline)]/20 pb-3 mb-2">
                   <h3 className="text-base font-bold text-[var(--color-on-surface)]">预置智能规则</h3>
-                  <p className="text-xs text-on-surface/50 mt-1">定制注入到系统主会话上下文的规则约束 (System Instructions)</p>
+                  <p className="text-xs text-on-surface/50 mt-1">定制注入到系统主会话上下文的模式级规则文件与行为约束 (Rules & System Prompts)</p>
                 </div>
 
                 <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-outline)]/20 rounded-xl flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <ShieldAlert className={`w-5 h-5 ${complianceChecked ? 'text-[var(--color-primary)]' : 'text-red-400 animate-spin'}`} />
+                    {(() => {
+                      const ComplianceIcon = getRuleTabIcon();
+                      return <ComplianceIcon className={`w-5 h-5 ${complianceChecked ? 'text-[var(--color-primary)]' : 'text-red-400 animate-spin'}`} />;
+                    })()}
                     <div>
                       <span className="text-sm font-bold text-[var(--color-on-surface)]">本地内容风控合规校验</span>
                       <p className="text-xs text-on-surface/50 mt-0.5">自动阻断危险脚本和代码逻辑并提供行为留痕</p>
@@ -1774,6 +1864,172 @@ export default function SettingsModal({
                   </span>
                 </div>
 
+                {/* Grid section for the 4 interactive operational modes rules */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-[var(--color-primary)] font-mono font-semibold">运行模式决策控制规约 (Multi-Mode Safety Rules)</span>
+                    <span className="text-[10px] text-on-surface/40 font-mono">规则存放端: BlogSystem/rules/</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Mode 1 - Normal Mode */}
+                    <div className="p-4 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.02] flex flex-col justify-between hover:border-emerald-500/25 transition-all gap-3.5 group">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                            <NormalIcon className="w-4 h-4" />
+                          </span>
+                          <span className="text-xs font-bold text-[var(--color-on-surface)]">普通模式 (安全常态)</span>
+                        </div>
+                        <p className="text-[11px] text-on-surface/50 leading-relaxed">
+                          采用高强度权限沙盒机制。所有关键命令强制要求人工确认。默认阻止未受信域的网络 API 请求与物理路径重置。
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          onClose();
+                          try {
+                            const channel = new BroadcastChannel('soloforge-editor-sync-channel');
+                            channel.postMessage({
+                              type: 'FILE_SELECT',
+                              file: 'BlogSystem/rules/normal_rules.md',
+                              content: `# 普通模式控制规则 (Normal Mode Rules)\n\n## 📌 基础定义与权限沙盒\n普通模式是 SoloForge 平台预设的基础运行模式。此状态下的一切代码执行、AI 生成都以「安全、合规」为绝对优先级。\n\n## 🔒 核心控制限制\n1. **指令阻断**：所有涉敏、可能修改系统内核、注册表的脚本会在底层自动丢弃。\n2. **沙盒防御**：网络端口、外部链接请求需要用户确认或由虚拟代理接管。\n3. **用户手动确认**：自动执行开关关闭，所有命令均需点击确认，确保完全受控。`
+                            });
+                            channel.postMessage({
+                              type: 'JUMP_TO_EXPLORER',
+                              toast: '📂 已为您快速打开普通模式规则文件: BlogSystem/rules/normal_rules.md'
+                            });
+                            channel.close();
+                          } catch (e) {
+                            console.warn(e);
+                          }
+                        }}
+                        className="w-full py-2 flex items-center justify-center gap-1.5 rounded-lg text-[10.5px] font-bold border border-emerald-500/20 text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Compass className="w-3.5 h-3.5 transition-transform group-hover:rotate-45" />
+                        创建并快速打开规则文件
+                      </button>
+                    </div>
+
+                    {/* Mode 2 - Performance Mode */}
+                    <div className="p-4 rounded-xl border border-purple-500/10 bg-purple-500/[0.02] flex flex-col justify-between hover:border-purple-500/25 transition-all gap-3.5 group">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 shrink-0">
+                            <PerformanceIcon className="w-4 h-4" />
+                          </span>
+                          <span className="text-xs font-bold text-[var(--color-on-surface)]">性能模式 (半自动)</span>
+                        </div>
+                        <p className="text-[11px] text-on-surface/50 leading-relaxed">
+                          降低流式缓存上下文的时效审计。启用极速后台线程增量更新机制。最大化保留富文本 UI 框架首屏计算效能。
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          onClose();
+                          try {
+                            const channel = new BroadcastChannel('soloforge-editor-sync-channel');
+                            channel.postMessage({
+                              type: 'FILE_SELECT',
+                              file: 'BlogSystem/rules/performance_rules.md',
+                              content: `# 性能模式控制规则 (Performance Mode Rules)\n\n## 📌 基础定义与性能对齐\n性能模式致力于通过低时延开销、增量式解析来满足极高强度的开发体验。\n\n## ⚡ 核心控制限制\n1. **流式缓存**：启用全流式输入/输出过滤，去除冗余的上下文留痕与全量标记校验。\n2. **多线程并发**：在后台线程中预处理文件更改，对常规静态资源开启惰性加载机制。\n3. **内存压缩**：对 10 轮前的历史交互信息执行有损向量切片压缩，节省内存开销。`
+                            });
+                            channel.postMessage({
+                              type: 'JUMP_TO_EXPLORER',
+                              toast: '📂 已为您快速打开性能模式规则文件: BlogSystem/rules/performance_rules.md'
+                            });
+                            channel.close();
+                          } catch (e) {
+                            console.warn(e);
+                          }
+                        }}
+                        className="w-full py-2 flex items-center justify-center gap-1.5 rounded-lg text-[10.5px] font-bold border border-purple-500/20 text-purple-400 bg-purple-500/5 hover:bg-purple-500/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Compass className="w-3.5 h-3.5 transition-transform group-hover:rotate-45" />
+                        创建并快速打开规则文件
+                      </button>
+                    </div>
+
+                    {/* Mode 3 - Expert Mode */}
+                    <div className="p-4 rounded-xl border border-amber-500/10 bg-amber-500/[0.02] flex flex-col justify-between hover:border-amber-500/25 transition-all gap-3.5 group">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
+                            <ExpertIcon className="w-4 h-4" />
+                          </span>
+                          <span className="text-xs font-bold text-[var(--color-on-surface)]">专家模式 (自动感知)</span>
+                        </div>
+                        <p className="text-[11px] text-on-surface/50 leading-relaxed">
+                          自适应中度编译流。IDE 后台自动开展 AST 抽象树静态扫描、逻辑异常检验以及依赖未定义自动修复。
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          onClose();
+                          try {
+                            const channel = new BroadcastChannel('soloforge-editor-sync-channel');
+                            channel.postMessage({
+                              type: 'FILE_SELECT',
+                              file: 'BlogSystem/rules/expert_rules.md',
+                              content: `# 专家模式控制规则 (Expert Mode Rules)\n\n## 📌 基础定义与自动化赋能\n专家模式下，IDE 具备中等强度的全自动处理指令权限，专门用于深度代码解构、重构。\n\n## 🧠 核心控制限制\n1. **自动前置验证**：编辑代码后，后台静默执行 AST 树检验、接口对齐以及未引用变量扫描。\n2. **智能合并与拆分**：主动重构组件结构，对高耦合的 Vue/React 模块推荐或自动应用微服务化重塑。\n3. **静默依赖修补**：当遇到依赖缺失时，IDE 可静默调用本地加速源包补全，避免构建阻断。`
+                            });
+                            channel.postMessage({
+                              type: 'JUMP_TO_EXPLORER',
+                              toast: '📂 已为您快速打开专家模式规则文件: BlogSystem/rules/expert_rules.md'
+                            });
+                            channel.close();
+                          } catch (e) {
+                            console.warn(e);
+                          }
+                        }}
+                        className="w-full py-2 flex items-center justify-center gap-1.5 rounded-lg text-[10.5px] font-bold border border-amber-500/20 text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Compass className="w-3.5 h-3.5 transition-transform group-hover:rotate-45" />
+                        创建并快速打开规则文件
+                      </button>
+                    </div>
+
+                    {/* Mode 4 - Ultimate Mode */}
+                    <div className="p-4 rounded-xl border border-red-500/10 bg-red-500/[0.02] flex flex-col justify-between hover:border-red-500/25 transition-all gap-3.5 group">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 shrink-0">
+                            <UltimateIcon className="w-4 h-4" />
+                          </span>
+                          <span className="text-xs font-bold text-[var(--color-on-surface)]">极致模式 (全域自动)</span>
+                        </div>
+                        <p className="text-[11px] text-on-surface/50 leading-relaxed">
+                          完全松开 CPU 并发限制，保障最高等级重试，多路调用并启用全局跨资产 RAG 重组注入。
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          onClose();
+                          try {
+                            const channel = new BroadcastChannel('soloforge-editor-sync-channel');
+                            channel.postMessage({
+                              type: 'FILE_SELECT',
+                              file: 'BlogSystem/rules/ultimate_rules.md',
+                              content: `# 极致模式控制规则 (Ultimate Mode Rules)\n\n## 📌 基础定义与火力无限\n解开全部 CPU、GPU 算力限制，实现 100% 全自动专家决策与重试回路。\n\n## 🔥 核心控制限制\n1. **全力并发计算**：开启 CPU 超线程任务管线与本地并行 GPU 加速渲染对齐。\n2. **自我纠错重试**：当后台编译报错或测试未通过时，允许 AI 在不干扰前台的前提下自主回溯并重试最多 5 次。\n3. **无缝混合大上下文**：开启跨多向量库全量召回检索，提供 100% RAG 全景记忆注入。\n4. **极致发烧狂热**：针对编写的所有基础文件施加最优算法，极光代码即刻生成。`
+                            });
+                            channel.postMessage({
+                              type: 'JUMP_TO_EXPLORER',
+                              toast: '📂 已为您快速打开极致模式规则文件: BlogSystem/rules/ultimate_rules.md'
+                            });
+                            channel.close();
+                          } catch (e) {
+                            console.warn(e);
+                          }
+                        }}
+                        className="w-full py-2 flex items-center justify-center gap-1.5 rounded-lg text-[10.5px] font-bold border border-red-500/20 text-red-500 bg-red-500/5 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Compass className="w-3.5 h-3.5 transition-transform group-hover:rotate-45" />
+                        创建并快速打开规则文件
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   <span className="text-xs text-[var(--color-primary)] font-mono font-semibold block">上传外部控制规则/约束脚本 (.txt)</span>
                   <div className="flex gap-2">
@@ -1782,7 +2038,7 @@ export default function SettingsModal({
                       placeholder="外部脚本名称" 
                       value={newSkillName}
                       onChange={(e) => setNewSkillName(e.target.value)}
-                      className="flex-1 text-sm px-3.5 py-3.5 bg-[var(--color-surface)] border border-[var(--color-outline)]/20 rounded-xl text-[var(--color-on-surface)] outline-none focus:border-[var(--color-primary)]" 
+                      className="flex-1 text-sm px-3.5 py-3 bg-[var(--color-surface)] border border-[var(--color-outline)]/20 rounded-xl text-[var(--color-on-surface)] outline-none focus:border-[var(--color-primary)]" 
                     />
                     <button 
                       onClick={uploadSkillMock}

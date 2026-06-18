@@ -172,6 +172,16 @@ export const SYNTAX_THEMES: SyntaxThemePreset[] = [
   }
 ];
 
+export interface CustomFont {
+  name: string;
+  url?: string;
+  isPreset?: boolean;
+}
+
+export const PRESET_FONTS: CustomFont[] = [
+  { name: '默认 (Default)', url: '', isPreset: true }
+];
+
 interface ThemeColorTargets {
   activityBar: boolean;
   skillBar: boolean;
@@ -187,11 +197,16 @@ interface ThemeContextType {
   currentThemeId: string;
   activeTheme: ThemePreset;
   syntaxThemeId: string;
+  customFonts: CustomFont[];
+  selectedFont: string;
   setSyntaxThemeId: (id: string) => void;
   setPrimaryColor: (color: string) => void;
   setPrimaryColorTargets: React.Dispatch<React.SetStateAction<ThemeColorTargets>>;
   setCurrentThemeId: (id: string) => void;
   syncTheme: (themeId: string, color: string, targets: ThemeColorTargets) => void;
+  addCustomFont: (name: string, url?: string) => void;
+  deleteCustomFont: (name: string) => void;
+  setSelectedFont: (name: string) => void;
 }
 
 export const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -203,7 +218,7 @@ const getRGBNumbers = (color: string): string => {
   }
   if (cleanHex.length !== 6) return '255, 222, 130';
   const num = parseInt(cleanHex, 16);
-  return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
+  return `${(num >> 16) & 255}, ${(num >> 8) & 255},  ${num & 255}`;
 };
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -290,6 +305,126 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return 'auto';
   });
+
+  const [customFonts, setCustomFonts] = useState<CustomFont[]>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('soloforge_customFonts');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            return parsed.filter((f: CustomFont) => {
+              if (!f || !f.name) return false;
+              const name = f.name.toLowerCase();
+              return !name.includes('geekfont') &&
+                     !name.includes('techmono') &&
+                     !name.includes('yaku') &&
+                     !name.includes('ma shan') &&
+                     !name.includes('ma_shan') &&
+                     !name.includes('zcool') &&
+                     !name.includes('站酷') &&
+                     !name.includes('黄油') &&
+                     !name.includes('雅雅') &&
+                     !name.includes('雅雅黑') &&
+                     !name.includes('雅酷') &&
+                     !name.includes('政体') &&
+                     !name.includes('炫美');
+            });
+          }
+        } catch (e) {}
+      }
+    }
+    return [];
+  });
+
+  const [selectedFont, setSelectedFont] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('soloforge_selectedFont');
+      if (stored) return stored;
+    }
+    return '默认 (Default)';
+  });
+
+  // Load dynamic google fonts and apply to root element
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Combine preset fonts and custom fonts
+    const allFonts = [...PRESET_FONTS, ...customFonts];
+    const activeF = allFonts.find(f => f.name === selectedFont);
+
+    if (activeF && activeF.url) {
+      if (activeF.url.startsWith('data:')) {
+        const fontId = `dynamic-font-face-${encodeURIComponent(activeF.name)}`;
+        let styleEl = document.getElementById(fontId) as HTMLStyleElement;
+        if (!styleEl) {
+          styleEl = document.createElement('style');
+          styleEl.id = fontId;
+          const format = activeF.url.includes('woff2') ? 'woff2' : activeF.url.includes('woff') ? 'woff' : activeF.url.includes('ttf') ? 'truetype' : 'opentype';
+          styleEl.textContent = `
+            @font-face {
+              font-family: "${activeF.name}";
+              src: url("${activeF.url}") format("${format}");
+              font-weight: normal;
+              font-style: normal;
+            }
+          `;
+          document.head.appendChild(styleEl);
+        }
+      } else {
+        // Check if link is already loaded
+        const existingLink = document.getElementById(`font-link-${encodeURIComponent(activeF.name)}`);
+        if (!existingLink) {
+          const link = document.createElement('link');
+          link.id = `font-link-${encodeURIComponent(activeF.name)}`;
+          link.rel = 'stylesheet';
+          link.href = activeF.url;
+          document.head.appendChild(link);
+        }
+      }
+    }
+
+    // Apply selected font family globally!
+    if (selectedFont && selectedFont !== '默认 (Default)') {
+      let cssFontName = selectedFont;
+      // Strip brackets or descriptions from system presets
+      if (selectedFont === '系统默认 (System UI)') {
+        cssFontName = 'system-ui, -apple-system, sans-serif';
+      } else if (selectedFont.includes('(')) {
+        // e.g. "马山政体 (Ma Shan Zheng)" -> "Ma Shan Zheng"
+        const match = selectedFont.match(/\(([^)]+)\)/);
+        if (match) {
+          cssFontName = match[1];
+        }
+      }
+      
+      document.documentElement.style.setProperty('--font-sans', `"${cssFontName}", "Inter", sans-serif`);
+      document.documentElement.style.setProperty('--font-display', `"${cssFontName}", "Hanken Grotesk", sans-serif`);
+    } else {
+      document.documentElement.style.removeProperty('--font-sans');
+      document.documentElement.style.removeProperty('--font-display');
+    }
+
+    // Also persist
+    localStorage.setItem('soloforge_selectedFont', selectedFont);
+    localStorage.setItem('soloforge_customFonts', JSON.stringify(customFonts));
+  }, [selectedFont, customFonts]);
+
+  const addCustomFont = (name: string, url?: string) => {
+    setCustomFonts(prev => {
+      if (prev.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, { name, url }];
+    });
+  };
+
+  const deleteCustomFont = (name: string) => {
+    setCustomFonts(prev => prev.filter(f => f.name !== name));
+    if (selectedFont === name) {
+      setSelectedFont('默认 (Default)');
+    }
+  };
 
   const activeTheme = useMemo(() => {
     return THEME_PRESETS.find(t => t.id === currentThemeId) || THEME_PRESETS[0];
@@ -451,12 +586,17 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     currentThemeId,
     activeTheme,
     syntaxThemeId,
+    customFonts,
+    selectedFont,
     setSyntaxThemeId,
     setPrimaryColor,
     setPrimaryColorTargets,
     setCurrentThemeId,
-    syncTheme
-  }), [primaryColor, primaryColorTargets, currentThemeId, activeTheme, syntaxThemeId]);
+    syncTheme,
+    addCustomFont,
+    deleteCustomFont,
+    setSelectedFont
+  }), [primaryColor, primaryColorTargets, currentThemeId, activeTheme, syntaxThemeId, customFonts, selectedFont]);
 
   return (
     <ThemeContext.Provider value={value}>

@@ -1,10 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, PlayCircle, Terminal, Trash2, CheckCircle, RefreshCw, AlertTriangle, Lock, Unlock, ChevronDown, ChevronUp, AlertCircle, Info, MessageSquarePlus, Sparkles, Check } from 'lucide-react';
+import { Play, PlayCircle, Terminal, Trash2, CheckCircle, RefreshCw, AlertTriangle, Lock, Unlock, ChevronDown, ChevronUp, AlertCircle, Info, MessageSquarePlus, Sparkles, Check, Plus, X } from 'lucide-react';
 
 interface LogItem {
   time: string;
   type: 'info' | 'success' | 'warn' | 'error' | 'system';
   msg: string;
+}
+
+interface TerminalInstance {
+  id: string;
+  name: string;
+  logItems: LogItem[];
+  progress: number;
+  isBuilding: boolean;
+  statusText: string;
+  autoScroll: boolean;
+  commandValue: string;
 }
 
 interface TerminalPanelProps {
@@ -56,18 +67,49 @@ export default function TerminalPanel({ permissionMode = 'normal' }: TerminalPan
       window.removeEventListener('soloforge-toggle-terminal', handleToggleTerminal);
     };
   }, []);
-  const [progress, setProgress] = useState(100);
-  const [isBuilding, setIsBuilding] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [logItems, setLogItems] = useState<LogItem[]>([
-    { time: '17:56:50', type: 'system', msg: '系统已成功在容器端口 3000 初始化监听' },
-    { time: '17:56:51', type: 'info', msg: 'vite v6.2.3 开发服务运行于本地 http://localhost:3000' },
-    { time: '17:56:52', type: 'warn', msg: '[eslint] 警告：在 useKeybind 钩子中发现 Unexpected any 类型定义 (/src/utils.ts:74)' },
-    { time: '17:56:53', type: 'error', msg: '[typescript] 错误：在 ChatPanel.tsx:1125 处，类型 "ChatSession" 上不存在属性 "permissionMode"。是否指 "isNormalMode" 或 "currentConfig"？' },
-    { time: '17:56:54', type: 'success', msg: '✓ 静态资产包编译成功，静态树结构准备完毕' },
+  const [instances, setInstances] = useState<TerminalInstance[]>([
+    {
+      id: 'server',
+      name: 'node (server)',
+      logItems: [
+        { time: '17:56:50', type: 'system', msg: '系统已成功在容器端口 3000 初始化监听' },
+        { time: '17:56:51', type: 'info', msg: 'vite v6.2.3 开发服务运行于本地 http://localhost:3000' },
+        { time: '17:56:52', type: 'warn', msg: '[eslint] 警告：在 useKeybind 钩子中发现 Unexpected any 类型定义 (/src/utils.ts:74)' },
+        { time: '17:56:53', type: 'error', msg: '[typescript] 错误：在 ChatPanel.tsx:1125 处，类型 "ChatSession" 上不存在属性 "permissionMode"。是否指 "isNormalMode" 或 "currentConfig"？' },
+        { time: '17:56:54', type: 'success', msg: '✓ 静态资产包编译成功，静态树结构准备完毕' },
+      ],
+      progress: 100,
+      isBuilding: false,
+      statusText: '准备就绪',
+      autoScroll: true,
+      commandValue: ''
+    },
+    {
+      id: 'compiler',
+      name: 'compiler-watch',
+      logItems: [
+        { time: '17:57:10', type: 'system', msg: '>>> [esbuild] 启动文件关联监控树...' },
+        { time: '17:58:22', type: 'info', msg: 'FileChanged: src/components/SettingsModal.tsx - incremental diff processed' },
+        { time: '17:58:24', type: 'success', msg: '✓ TS 静态模块树重构校验耗时 42ms' },
+      ],
+      progress: 100,
+      isBuilding: false,
+      statusText: '文件变化监视中',
+      autoScroll: true,
+      commandValue: ''
+    }
   ]);
 
-  const [statusText, setStatusText] = useState('准备就绪');
+  const [activeInstanceId, setActiveInstanceId] = useState<string>('server');
+  const [renameId, setRenameId] = useState<string | null>(null);
+
+  const activeInstance = instances.find(inst => inst.id === activeInstanceId) || instances[0];
+  const { logItems, progress, isBuilding, statusText, autoScroll } = activeInstance;
+
+  const setAutoScroll = (val: boolean) => {
+    setInstances(prev => prev.map(inst => inst.id === activeInstanceId ? { ...inst, autoScroll: val } : inst));
+  };
+
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom of logs when we add new logs if auto-scroll is enabled
@@ -77,18 +119,56 @@ export default function TerminalPanel({ permissionMode = 'normal' }: TerminalPan
     }
   }, [logItems, autoScroll]);
 
-  const startRebuild = () => {
-    if (isBuilding) return;
-    
-    setIsBuilding(true);
-    setProgress(0);
-    setStatusText('编译路由与应用样式...');
-    
-    const now = new Date().toLocaleTimeString();
-    setLogItems([
-      { time: now, type: 'system', msg: '>>> 启动多级流水线自动化构建进程...' },
-      { time: now, type: 'info', msg: 'yarn run build --force' },
-    ]);
+  const addNewInstance = () => {
+    const newId = `terminal_${Date.now()}`;
+    const newNum = instances.length + 1;
+    const newInst: TerminalInstance = {
+      id: newId,
+      name: `bash (${newNum})`,
+      logItems: [
+        { time: new Date().toLocaleTimeString(), type: 'system', msg: `终端已成功多开，并为当前实例 [bash (${newNum})] 配套完全独立的沙盒进程。` },
+        { time: new Date().toLocaleTimeString(), type: 'info', msg: '输入 "help" 列出交互式终端指令，运行 "build" 手动执行独立构建流水线任务。' }
+      ],
+      progress: 100,
+      isBuilding: false,
+      statusText: '沙盒进程启动完毕',
+      autoScroll: true,
+      commandValue: ''
+    };
+    setInstances(prev => [...prev, newInst]);
+    setActiveInstanceId(newId);
+  };
+
+  const closeInstance = (id: string) => {
+    if (instances.length <= 1) return;
+    setInstances(prev => prev.filter(inst => inst.id !== id));
+    if (activeInstanceId === id) {
+      const remaining = instances.filter(inst => inst.id !== id);
+      setActiveInstanceId(remaining[remaining.length - 1].id);
+    }
+  };
+
+  const finishRename = (id: string, newName: string) => {
+    setRenameId(null);
+    const cleanName = newName.trim();
+    if (!cleanName) return;
+    setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, name: cleanName } : inst));
+  };
+
+  const startRebuildForInstance = (instId: string) => {
+    const inst = instances.find(i => i.id === instId);
+    if (!inst || inst.isBuilding) return;
+
+    setInstances(prev => prev.map(i => i.id === instId ? {
+      ...i,
+      isBuilding: true,
+      progress: 0,
+      statusText: '编译路由与应用样式...',
+      logItems: [
+        { time: new Date().toLocaleTimeString(), type: 'system', msg: '>>> 启动多级流水线自动化构建进程...' },
+        { time: new Date().toLocaleTimeString(), type: 'info', msg: 'yarn run build --force' },
+      ]
+    } : i));
 
     let currentProgress = 0;
     const interval = setInterval(() => {
@@ -96,51 +176,163 @@ export default function TerminalPanel({ permissionMode = 'normal' }: TerminalPan
       if (currentProgress >= 100) {
         currentProgress = 100;
         clearInterval(interval);
-        setIsBuilding(false);
-        setStatusText('应用服务监听中 (Port: 3000)');
-        
+
         const endNow = new Date().toLocaleTimeString();
-        setLogItems(prev => [
-          ...prev,
-          { time: endNow, type: 'success', msg: '✓ 生成 /dist 生产捆绑包 (CJS 静态资源格式)' },
-          { time: endNow, type: 'info', msg: 'node dist/server.cjs' },
-          { time: endNow, type: 'success', msg: '● 服务已在 0.0.0.0:3000 稳定部署并提供访问' }
-        ]);
-        setProgress(100);
+        setInstances(prev => prev.map(i => i.id === instId ? {
+          ...i,
+          isBuilding: false,
+          progress: 100,
+          statusText: '应用服务监听中 (Port: 3000)',
+          logItems: [
+            ...i.logItems,
+            { time: endNow, type: 'success', msg: '✓ 生成 /dist 生产捆绑包 (CJS 静态资源格式)' },
+            { time: endNow, type: 'info', msg: 'node dist/server.cjs' },
+            { time: endNow, type: 'success', msg: '● 服务已在 0.0.0.0:3000 稳定部署并提供访问' }
+          ]
+        } : i));
       } else {
-        setProgress(currentProgress);
-        
-        // Push intermediate logs based on progress boundaries
+        let sText = '应用服务监听中 (Port: 3000)';
+        let additionalLog: LogItem | null = null;
         const timestamp = new Date().toLocaleTimeString();
+
         if (currentProgress > 15 && currentProgress <= 25) {
-          setStatusText(`解析程序包依赖项 (${currentProgress}%)`);
-          setLogItems(prev => {
-            if (prev.some(l => l.msg.includes('vite:css'))) return prev;
-            return [...prev, { time: timestamp, type: 'info', msg: '[vite:css] 正在组合 PostCSS 工具指令与 Tailwind 核心编译树样式' }];
-          });
+          sText = `解析程序包依赖项 (${currentProgress}%)`;
+          additionalLog = { time: timestamp, type: 'info', msg: '[vite:css] 正在组合 PostCSS 工具指令与 Tailwind 核心编译树样式' };
         } else if (currentProgress > 45 && currentProgress <= 55) {
-          setStatusText(`编译 TypeScript 及 JSX 模块 (${currentProgress}%)`);
-          setLogItems(prev => {
-            if (prev.some(l => l.msg.includes('esbuild:ts'))) return prev;
-            return [...prev, { time: timestamp, type: 'info', msg: '[esbuild:ts] 编译解析 main.tsx, App.tsx 及其相关 UI 组件文件' }];
-          });
+          sText = `编译 TypeScript 及 JSX 模块 (${currentProgress}%)`;
+          additionalLog = { time: timestamp, type: 'info', msg: '[esbuild:ts] 编译解析 main.tsx, App.tsx 及其相关 UI 组件文件' };
         } else if (currentProgress > 75 && currentProgress <= 85) {
-          setStatusText(`优化混淆最终产物体积 (${currentProgress}%)`);
-          setLogItems(prev => {
-            if (prev.some(l => l.msg.includes('terser:minify'))) return prev;
-            return [
-              ...prev, 
-              { time: timestamp, type: 'warn', msg: 'd3-selection: 外部依赖库体积略微超出默认最佳预算区间' },
-              { time: timestamp, type: 'info', msg: '[terser:minify] 启动 Terser 算法剔除冗余代码，生成生产级高压缩包资源' }
-            ];
-          });
+          sText = `优化混淆最终产物体积 (${currentProgress}%)`;
+          additionalLog = { time: timestamp, type: 'warn', msg: 'd3-selection: 外部依赖库体积略微超出默认最佳预算区间' };
         }
+
+        setInstances(prev => prev.map(i => {
+          if (i.id !== instId) return i;
+          const substringToCheck = additionalLog ? additionalLog.msg.substring(0, 15) : '';
+          const alreadyLogged = additionalLog && i.logItems.some(l => l.msg.includes(substringToCheck));
+          const nextLogs = (additionalLog && !alreadyLogged) ? [...i.logItems, additionalLog] : i.logItems;
+          return {
+            ...i,
+            progress: currentProgress,
+            statusText: sText === '应用服务监听中 (Port: 3000)' ? i.statusText : sText,
+            logItems: nextLogs
+          };
+        }));
       }
     }, 150);
   };
 
+  const startRebuild = () => {
+    startRebuildForInstance(activeInstanceId);
+  };
+
   const clearTerminal = () => {
-    setLogItems([]);
+    setInstances(prev => prev.map(inst => inst.id === activeInstanceId ? { ...inst, logItems: [] } : inst));
+  };
+
+  const handleCommandSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cmd = activeInstance.commandValue.trim();
+    if (!cmd) return;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const newUserLog: LogItem = {
+      time: timestamp,
+      type: 'system',
+      msg: `$ ${cmd}`
+    };
+
+    let responseLogs: LogItem[] = [];
+    const args = cmd.toLowerCase().split(' ');
+    const primaryCmd = args[0];
+
+    if (primaryCmd === 'help') {
+      responseLogs = [
+        { time: timestamp, type: 'info', msg: '💡 可用命令列表 (Simulated Shell):' },
+        { time: timestamp, type: 'info', msg: '  - build : 运行完整生产级流水线构建周期' },
+        { time: timestamp, type: 'info', msg: '  - clear : 清空当前终端的全部运行日志' },
+        { time: timestamp, type: 'info', msg: '  - ls    : 列出当前的系统文件与目录' },
+        { time: timestamp, type: 'info', msg: '  - neofetch : 显示 SoloForge 发烧级系统硬件与主题规格' },
+        { time: timestamp, type: 'info', msg: '  - node  : 运行简易 JavaScript 算术表达式（如: node 123*456）' },
+        { time: timestamp, type: 'info', msg: '  - git status : 查看本地 git 暂存区与追踪状态' },
+      ];
+    } else if (primaryCmd === 'clear') {
+      setInstances(prev => prev.map(inst => inst.id === activeInstanceId ? { ...inst, logItems: [], commandValue: '' } : inst));
+      return;
+    } else if (primaryCmd === 'build') {
+      setInstances(prev => prev.map(inst => inst.id === activeInstanceId ? { 
+        ...inst, 
+        logItems: [...inst.logItems, newUserLog], 
+        commandValue: '' 
+      } : inst));
+      setTimeout(() => {
+        startRebuildForInstance(activeInstanceId);
+      }, 100);
+      return;
+    } else if (primaryCmd === 'ls') {
+      responseLogs = [
+        { time: timestamp, type: 'info', msg: '📁 列出 BlogSystem/ 工作目录:' },
+        { time: timestamp, type: 'info', msg: '  src/         public/      docs/        electron/' },
+        { time: timestamp, type: 'info', msg: '  package.json tsconfig.json vite.config.ts' }
+      ];
+    } else if (primaryCmd === 'neofetch') {
+      responseLogs = [
+        { time: timestamp, type: 'success', msg: '   ____        __     ______' },
+        { time: timestamp, type: 'success', msg: '  / __/___  __/ /__  / __/ /__ ___ _____' },
+        { time: timestamp, type: 'success', msg: ' _\\ \\/ _ \\/ _  / _ \\/ _// _  // _ `/ -_)' },
+        { time: timestamp, type: 'success', msg: '/___/\\___/\\_,_/\\___/_/ /_//_/ \\_, /\\__/ ' },
+        { time: timestamp, type: 'success', msg: '                             /___/' },
+        { time: timestamp, type: 'info', msg: `---------------------------------` },
+        { time: timestamp, type: 'info', msg: `  OS: SoloForge Sandboxed Node Target` },
+        { time: timestamp, type: 'info', msg: `  Kernel: Cloud Run Container (Port 3000)` },
+        { time: timestamp, type: 'info', msg: `  Uptime: 2 hours 14 mins` },
+        { time: timestamp, type: 'info', msg: `  Shell: soloforge-interactive-zsh-v1.2` },
+        { time: timestamp, type: 'info', msg: `  Core Engines: Vite 6 + React 18 + TS` },
+        { time: timestamp, type: 'info', msg: `  Authored Permission Mode: ${permissionMode.toUpperCase()}` },
+      ];
+    } else if (primaryCmd === 'node') {
+      const expr = cmd.substring(5).trim();
+      if (!expr) {
+        responseLogs = [{ time: timestamp, type: 'warn', msg: '用法: node <数学表达式>。例如: node 12+34' }];
+      } else {
+        try {
+          if (/^[0-9+\-*/().\s]+$/.test(expr)) {
+            const res = Function(`"use strict"; return (${expr})`)();
+            responseLogs = [{ time: timestamp, type: 'success', msg: `▶ ${res}` }];
+          } else {
+            responseLogs = [{ time: timestamp, type: 'success', msg: `▶ Executed statement successfully (return undefined)` }];
+          }
+        } catch (err: any) {
+          responseLogs = [{ time: timestamp, type: 'error', msg: `SyntaxError: ${err.message}` }];
+        }
+      }
+    } else if (cmd.startsWith('git')) {
+      if (cmd === 'git status') {
+        responseLogs = [
+          { time: timestamp, type: 'success', msg: 'On branch main' },
+          { time: timestamp, type: 'success', msg: 'Your branch is up to date with \'origin/main\'.' },
+          { time: timestamp, type: 'info', msg: 'nothing to commit, working tree clean' }
+        ];
+      } else {
+        responseLogs = [{ time: timestamp, type: 'info', msg: `[git] Simulated execution of: ${cmd}` }];
+      }
+    } else {
+      responseLogs = [
+        { time: timestamp, type: 'error', msg: `sh: command not found: ${primaryCmd}` },
+        { time: timestamp, type: 'info', msg: '输入 "help" 获取可供体验的开发控制台命令！' }
+      ];
+    }
+
+    setInstances(prev => prev.map(inst => {
+      if (inst.id === activeInstanceId) {
+        return {
+          ...inst,
+          logItems: [...inst.logItems, newUserLog, ...responseLogs],
+          commandValue: ''
+        };
+      }
+      return inst;
+    }));
   };
 
   // Dispatch message to Chat Panel as an attachment
@@ -368,11 +560,83 @@ export default function TerminalPanel({ permissionMode = 'normal' }: TerminalPan
               <span className="text-on-surface/60 w-8 text-right font-mono font-bold">{progress}%</span>
             </div>
             <div className="flex items-center gap-2 text-[9px] font-medium text-on-surface/40">
-              <span className="bg-white/5 px-1.5 py-0.2 rounded border border-white/5">PORT: 3000</span>
-              <span>•</span>
-              <span className="bg-white/5 px-1.5 py-0.2 rounded border border-white/5 font-bold text-emerald-400">0.0.0.0</span>
+              <span className="bg-white/5 px-1.5 py-0.2 rounded border border-white/5 font-mono font-bold text-emerald-400">0.0.0.0</span>
             </div>
           </div>
+
+          {/* Secondary Instance Tab switcher */}
+          {activeTab === 'terminal' && (
+            <div className="bg-surface border-b border-outline/15 px-3.5 py-1.5 flex items-center justify-between gap-4 overflow-x-auto select-none shrink-0 scrollbar-none shadow-sm">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                {instances.map((inst) => {
+                  const isActive = inst.id === activeInstanceId;
+                  const isEditing = renameId === inst.id;
+                  return (
+                    <div
+                      key={inst.id}
+                      className="flex items-center rounded-md border text-[10px] h-6 transition-all font-sans group relative shrink-0"
+                      style={{
+                        backgroundColor: isActive ? `rgba(${modeStyle.accent}, 0.12)` : 'rgba(255, 255, 255, 0.02)',
+                        borderColor: isActive ? `rgba(${modeStyle.accent}, 0.3)` : 'rgba(255, 255, 255, 0.08)',
+                        color: isActive ? modeStyle.color : 'rgba(255, 255, 255, 0.45)',
+                      }}
+                    >
+                      {isEditing ? (
+                        <input
+                          autoFocus
+                          defaultValue={inst.name}
+                          onBlur={(e) => finishRename(inst.id, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              finishRename(inst.id, (e.target as HTMLInputElement).value);
+                            } else if (e.key === 'Escape') {
+                              setRenameId(null);
+                            }
+                          }}
+                          className="bg-transparent text-white font-mono h-full px-2 outline-none w-20 text-[10px] font-bold"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setActiveInstanceId(inst.id)}
+                          onDoubleClick={() => setRenameId(inst.id)}
+                          className="px-2 py-0.5 font-semibold text-left max-w-[125px] truncate"
+                          title="双击重命名此终端"
+                        >
+                          {inst.name}
+                        </button>
+                      )}
+
+                      {instances.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            closeInstance(inst.id);
+                          }}
+                          className="p-0.5 hover:bg-white/10 rounded mr-1 text-on-surface/30 hover:text-red-400 transition-colors shrink-0"
+                          title="关闭该终端实例"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button
+                  onClick={addNewInstance}
+                  className="p-1 px-1.5 border border-dashed border-outline/30 hover:border-outline/50 rounded-md text-on-surface/40 hover:text-on-surface hover:bg-white/5 transition-all flex items-center gap-1 shrink-0"
+                  title="多开新的终端实例 (bash)"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span className="text-[9.5px]">新建终端</span>
+                </button>
+              </div>
+
+              <div className="text-[9.5px] text-on-surface/35 font-sans whitespace-nowrap select-none shrink-0 italic max-sm:hidden">
+                双击页签重命名 | 输入 "help" 体验模拟运行 Shell 命令
+              </div>
+            </div>
+          )}
 
           {/* Log list area */}
           <div className="flex-grow overflow-y-auto p-4 text-[11px] leading-relaxed space-y-1.5 scrollbar-thin scrollbar-track-transparent dynamic-terminal-scrollarea">
@@ -456,6 +720,33 @@ export default function TerminalPanel({ permissionMode = 'normal' }: TerminalPan
                     );
                   })
                 )}
+
+                {/* Simulated interactive command prompt */}
+                <form 
+                  onSubmit={handleCommandSubmit} 
+                  className="flex items-center gap-2 mt-4 pt-2.5 border-t border-white/5 select-text shrink-0"
+                >
+                  <span className="text-[10px] select-none text-on-surface/40 font-mono flex items-center shrink-0 font-semibold">
+                    <span className="text-emerald-400 font-bold mr-1">$</span>
+                    <span>soloforge</span>
+                  </span>
+                  
+                  <input
+                    type="text"
+                    value={activeInstance.commandValue || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setInstances(prev => prev.map(i => i.id === activeInstanceId ? { ...i, commandValue: val } : i));
+                    }}
+                    placeholder='输入指令体验并测试运行 (例: "help", "neofetch", "ls", "build" ...)'
+                    className="flex-grow bg-transparent text-[11px] font-mono outline-none text-on-surface/85 placeholder-on-surface/30 min-w-0"
+                  />
+                  
+                  <span className="text-[9px] font-mono text-on-surface/25 bg-white/5 border border-white/5 px-1.5 py-0.2 rounded select-none shadow-sm shrink-0 whitespace-nowrap">
+                    ENTER 执行
+                  </span>
+                </form>
+
                 <div ref={terminalEndRef} />
               </>
             )}

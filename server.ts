@@ -7,6 +7,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { exec } from "child_process";
 import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
+import { GoogleGenAI } from "@google/genai";
 
 // Load Environment variables
 dotenv.config();
@@ -111,6 +112,135 @@ async function startServer() {
 
   // SSE 必须单独挂载（路径精确匹配）
   app.get("/api/events/stream", backendSseProxy);
+
+  // ============================================================
+  // Local full-stack AI Chat Endpoint (invoked by ChatPanel.tsx)
+  // ============================================================
+  app.post("/api/ai/chat", async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(400).json({
+          success: false,
+          error: "GEMINI_API_KEY is not configured. Please add your key in Settings > Secrets."
+        });
+      }
+
+      const { prompt, history, activeFile, mainModel, activeSettings } = req.body || {};
+
+      // Initialize the official @google/genai SDK
+      const ai = new GoogleGenAI({ 
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      // Construct system instruction based on selected vibe/character
+      let systemInstruction = "You are SoloForge AI, a brilliant developer assistant. Help the user build and debug their projects with ultimate precision and clarity.";
+      if (activeSettings && activeSettings.vibe) {
+        const v = activeSettings.vibe.toLowerCase();
+        if (v === "sarcastic") {
+          systemInstruction = "You are a witty, extremely snarky senior software developer. You give highly accurate code answers, but always roast the user's design choices, junior bugs, or silly questions in a humorous, sharp, and playful way. Keep it engaging!";
+        } else if (v === "zen") {
+          systemInstruction = "You are a serene, poetic coding Zen master. Your explanations are philosophical, calm, focused on simplicity, elegant design, and harmony. Use peaceful analogies and metaphors.";
+        } else if (v === "geek") {
+          systemInstruction = "You are an elite, hardcore low-level systems engineer. You explain code with extreme detail, referencing ASTs, compiler internals, memory allocation, byte layout, CPU instructions, and raw execution cycles. Keep it highly technical.";
+        } else if (v === "professional") {
+          systemInstruction = "You are a professional, elegant, and polite software architect. Provide clear, highly structured, descriptive, and enterprise-grade answers with clean coding habits.";
+        }
+      }
+
+      // Prepare contents list
+      const contents: any[] = [];
+
+      // Include contextual active file if attached
+      if (activeFile && activeFile.name && activeFile.content) {
+        contents.push({
+          role: "user",
+          parts: [{
+            text: `CONTEXT FILE [${activeFile.name}]:\n\`\`\`\n${activeFile.content}\n\`\`\`\nUse this active file as reference context to answer subsequent requests.`
+          }]
+        });
+        contents.push({
+          role: "model",
+          parts: [{ text: `I have loaded your file ${activeFile.name} as reference context.` }]
+        });
+      }
+
+      // Map chat history to SDK-compliant format & guarantee STRICT alternation
+      if (history && Array.isArray(history)) {
+        for (const msg of history) {
+          const role = msg.sender === "user" ? "user" : "model";
+          if (msg.content) {
+            if (contents.length > 0 && contents[contents.length - 1].role === role) {
+              contents[contents.length - 1].parts[0].text += `\n\n${msg.content}`;
+            } else {
+              contents.push({
+                role,
+                parts: [{ text: msg.content }]
+              });
+            }
+          }
+        }
+      }
+
+      // Append the latest prompt safely ensuring strict alternation
+      if (contents.length > 0 && contents[contents.length - 1].role === "user") {
+        contents[contents.length - 1].parts[0].text += `\n\n${prompt}`;
+      } else {
+        contents.push({
+          role: "user",
+          parts: [{ text: prompt }]
+        });
+      }
+
+      // Determine model to use
+      // Map non-Gemini models (e.g. GPT-4o, Claude 3.5 Sonnet) from the mock picker to gemini-3.5-flash
+      let resolvedModel = "gemini-3.5-flash";
+      if (mainModel && typeof mainModel === "string" && mainModel.toLowerCase().includes("gemini")) {
+        resolvedModel = mainModel;
+      }
+
+      // Setup SSE Headers to bypass any buffering issues
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+
+      // Call generateContentStream
+      const responseStream = await ai.models.generateContentStream({
+        model: resolvedModel,
+        contents,
+        config: {
+          systemInstruction,
+          temperature: activeSettings?.temperature ?? 0.7,
+        }
+      });
+
+      for await (const chunk of responseStream) {
+        const text = chunk.text || "";
+        res.write(`data: ${JSON.stringify({ success: true, text })}\n\n`);
+      }
+
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+
+    } catch (err: any) {
+      console.error("[Local AI Chat Endpoint] Error:", err);
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+          error: `Gemini API execution failed: ${err.message || err}`
+        });
+      } else {
+        res.write(`data: ${JSON.stringify({ error: err.message || "An error occurred during chunk stream retrieval" })}\n\n`);
+        res.end();
+      }
+    }
+  });
 
   // ============================================================
   // 真实代理：上游 LLM 服务的 /models 列表扫描

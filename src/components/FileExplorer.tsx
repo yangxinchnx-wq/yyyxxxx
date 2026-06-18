@@ -216,15 +216,93 @@ export default function FileExplorer({ selectedFile, setSelectedFile, onNewFile,
   // 1. 可以发出 API Get 接口请求: GET /api/files/tree
   // 2. 后端递归读取宿主物理路径，返回符合 FileNode 标准的树状 JSON 结构并执行 setTree
   // ==========================================
-  const [tree, setTree] = useState<FileNode>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('soloforge_fileTree');
-        if (saved) return JSON.parse(saved);
-      } catch (e) {
-        console.warn(e);
-      }
+  // Function to ensure assets/fonts and rules folders always exist with core files
+  const ensureRequiredFolders = (root: FileNode) => {
+    if (!root.children) {
+      root.children = [];
     }
+    
+    // 1. Ensure assets/fonts exists
+    let assetsNode = root.children.find(c => c.name === 'assets');
+    if (!assetsNode) {
+      assetsNode = {
+        name: 'assets',
+        type: 'folder',
+        path: `${root.path}/assets`,
+        children: []
+      };
+      root.children.push(assetsNode);
+    }
+    
+    if (!assetsNode.children) {
+      assetsNode.children = [];
+    }
+    
+    let fontsNode = assetsNode.children.find(c => c.name === 'fonts');
+    if (!fontsNode) {
+      fontsNode = {
+        name: 'fonts',
+        type: 'folder',
+        path: `${assetsNode.path}/fonts`,
+        children: []
+      };
+      assetsNode.children.push(fontsNode);
+    }
+    
+    if (!fontsNode.children) {
+      fontsNode.children = [];
+    }
+    
+    const requiredFontFiles = [
+      'Custom-GeekFont.ttf',
+      'TechMono-Retro.woff2'
+    ];
+    
+    requiredFontFiles.forEach(filename => {
+      if (!fontsNode!.children!.some(c => c.name === filename)) {
+        fontsNode!.children!.push({
+          name: filename,
+          type: 'file',
+          path: `${fontsNode!.path}/${filename}`
+        });
+      }
+    });
+
+    // 2. Ensure rules exists
+    let rulesNode = root.children.find(c => c.name === 'rules');
+    if (!rulesNode) {
+      rulesNode = {
+        name: 'rules',
+        type: 'folder',
+        path: `${root.path}/rules`,
+        children: []
+      };
+      root.children.push(rulesNode);
+    }
+    
+    if (!rulesNode.children) {
+      rulesNode.children = [];
+    }
+    
+    const requiredRuleFiles = [
+      'normal_rules.md',
+      'performance_rules.md',
+      'expert_rules.md',
+      'ultimate_rules.md'
+    ];
+    
+    requiredRuleFiles.forEach(filename => {
+      if (!rulesNode!.children!.some(c => c.name === filename)) {
+        rulesNode!.children!.push({
+          name: filename,
+          type: 'file',
+          path: `${rulesNode!.path}/${filename}`
+        });
+      }
+    });
+  };
+
+  const getDefaultTree = (): FileNode => {
     return {
       name: 'BlogSystem',
       type: 'folder',
@@ -299,6 +377,28 @@ export default function FileExplorer({ selectedFile, setSelectedFile, onNewFile,
         }
       ]
     };
+  };
+
+  const [tree, setTree] = useState<FileNode>(() => {
+    let base: FileNode;
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('soloforge_fileTree');
+        if (saved) {
+          base = JSON.parse(saved);
+        } else {
+          base = getDefaultTree();
+        }
+      } catch (e) {
+        console.warn(e);
+        base = getDefaultTree();
+      }
+    } else {
+      base = getDefaultTree();
+    }
+    
+    ensureRequiredFolders(base);
+    return base;
   });
 
   // Keep tree in sync with localStorage and trigger channel broadcast
